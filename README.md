@@ -13,7 +13,7 @@ https://github.com/IBM/power-aix-oracle-rac-asm/blob/main/docs/README_Ansible_Or
 
 ## Resources
 
-For **guides** and **reference**, please visit the [Documentation](https://github.com/IBM/ansible-power-aix-oracle-asm/tree/main/docs/) site.
+For **guides** and **reference**, please visit the [Documentation](https://github.com/IBM/power-aix-oracle-asm/tree/main/docs/) site.
 
 ## License
 

@@ -1,0 +1,61 @@
+# Copyright (c) IBM Corporation 2021
+
+# This script performs grid silent install along with release update using 
+# gridSetup.sh -applyRU.
+
+# Idempotent: yes
+
+if [ ! -f ./helper.sh ]
+then
+    echo "$(basename $0): helper.sh not found in $(pwd)"
+    exit 1
+fi
+
+. ./helper.sh
+
+  #+ make sure this script is running as this user.
+check_user_is "{{ global.grid_owner }}"
+
+################################################################################
+#                                                                              #
+# Main                                                                         #
+#                                                                              #
+################################################################################
+
+ password="{{ global.root_password }}"
+grid_home="{{ config.grid_home | flatten | list | join ('/') }}"
+   ru_zip="{{ install.ora_zips.ora19c_ru }}"
+ru_subdir="{{ install.ora_zips.ru_subdir | default('') }}"
+
+ora_zips_dir="{{ install.ora_zips.nfs_mount.0 }}"
+ru_zip_path="$ora_zips_dir"
+[ -n "$ru_subdir" ] && ru_zip_path="$ru_zip_path/$ru_subdir"
+ru_zip_path="$ru_zip_path/$ru_zip"
+if [ ! -f "$ru_zip_path" ]; then
+  echo "ERROR: $ru_zip_path not found.\n";
+  exit 1
+fi
+ru_name=$(expr "$ru_zip" : '^.*p\([0-9]*\)_.*$')
+
+ru_dir="{{ config.fs.ofa_fs }}/RU"
+
+cd $grid_home
+echo "./gridSetup.sh -silent -applyRU $ru_dir/$ru_name -responsefile {{ files_dir }}/gridsetup.rsp"
+
+install_log="{{ done_dir }}/grid_install.out"
+
+$grid_home/gridSetup.sh -applyRU $ru_dir/$ru_name -silent -responsefile "{{ files_dir }}/gridsetup.rsp" <<EOF > $install_log 2>&1
+y
+$password
+EOF
+
+if grep -q 'Successfully Setup Software' $install_log; then
+  touch "{{ done_dir }}/grid_install_done"
+  grid_version=$($grid_home/bin/oraversion -compositeVersion)
+  echo "Grid install changed (Grid $grid_version install successfully.)"
+else
+  echo "ERROR: gridSetup.sh failed. See $install_log and gridSetupActions log on $(hostname) for details."
+  exit 1
+fi
+
+exit 0

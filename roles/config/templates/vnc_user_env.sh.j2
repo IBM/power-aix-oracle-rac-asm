@@ -1,0 +1,48 @@
+# Copyright (c) IBM Corporation 2021
+
+# This script creates <HOME>/.vnc/passwd for the specified user.
+# Usage: vnc_user_env.sh <user> <password> <pgroup> <home>
+# Idempotent: yes
+
+if [ ! -f ./helper.sh ]
+then
+    echo "ERROR: helper.sh not found in $(pwd)"
+    exit 1
+fi
+
+. ./helper.sh
+
+  #+ make sure this script is running as this user.
+check_user_is root
+
+################################################################################
+#                                                                              #
+# Main                                                                         #
+#                                                                              #
+################################################################################
+
+    user=$1
+password=$2
+  pgroup=$3
+    home=$4
+
+vnc_dir=$home/.vnc
+if [ ! -d $vnc_dir ]; then
+    runcmd_nz "mkdir $vnc_dir"
+    runcmd_nz "chown $user:$pgroup $vnc_dir"
+    runcmd_nz "chmod 755 $vnc_dir"
+    echo "$home/.vnc changed."
+fi
+
+password_file=$home/.vnc/passwd
+if [ ! -f $password_file ]; then
+  runcmd_nz "{{ scripts_dir }}/vncpasswd.sh -h $home -p $password"
+  if [ ! -f "$password_file" ]; then
+    echo "ERROR: Failed to create $password_file."
+    exit 1
+  fi
+  chown $user:$pgroup $password_file
+  echo "$password_file changed."
+fi
+
+exit 0

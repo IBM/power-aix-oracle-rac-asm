@@ -1,0 +1,198 @@
+# Copyright (c) IBM Corporation 2021
+
+# This script is invoked per ASM disk group.
+# 1) It renames disks specified in config.asmdisks.diskgroup:
+#    If the option "prefix" is specified, disks will be renamed.
+#    If new disk numbers are specified, the new disk name will use NEW disk
+#    numbers.
+# 2) Set disk attributes
+# 3) Change permissions and ownership on the raw disks
+#
+# For each disk that has been renamed, {{ done_dir }}/renamed_disks logs an
+# entry of the form hdiskX renamed to <prefix>X.
+# The rename_setup_dsks_done is to force a skip on this task, it is
+# not created here. It is created by the tasks that follows -
+# "Create rename_setup_dsks_done" because the script is called per disk group.
+#
+# TODO
+# There's an issue where some disks has been renamed but rename hdisk
+# or set attribue fails in another disksgroup, then the current task -
+# rename_setup_dsks.sh fails. This requires manual intervention
+# to correct the error and restore the disks to their original name
+# before this task is rerun.
+
+# Usage: rename_dsks.sh <diskgroup> <owership> <prefix> <disk_nums>
+#                       [<new_disk_nums>] ["clear_pvids"] ["zero_disks"]
+# <disk_nums> and <new_disk_nums> must be enclosed in quotes if there are 
+# more than one disk numbers.
+# If the option "clear_pvids" is specified, the PVIDs will be cleared.
+# If the option "zero_disks" is specified, the disks will be zeroed out.
+# Use "" to disable clear pvids, likewise for zero disks.
+
+# Idempotent: no if "prefix" is specified otherwise yes. See TODO above.
+
+if [ ! -f ./helper.sh ]
+then
+    echo "$(basename $0): helper.sh not found in $(pwd)"
+    exit 1
+fi
+
+. ./helper.sh
+
+  #+ make sure this script is running as this user.
+check_user_is root
+
+# https://www.ibm.com/support/knowledgecenter/ssw_aix_72/r_commands/rendev.html
+max_num_chars=15
+
+    diskgroup=$1
+         mode=$2
+    ownership=$3
+       prefix=$4
+    disk_nums=$5
+new_disk_nums=$6
+
+if [ $# -ne 6 ]; then
+  echo "ERROR: Invalid number of arguments $#, expecting 6."
+  exit 1
+fi
+
+function set_attr {
+  disk=$1
+  name=$2
+  value=$3
+
+  curr_value=$(lsattr -El $disk | awk "/^$name/ { print \$2 }")
+  if [ "$value" != "$curr_value" ]; then
+    runcmd_nz "chdev -l $disk -a ${name}=$value"
+    echo "$disk changed - attribute ${name}=$value"
+  fi
+}
+
+
+###############################################################################
+#                                                                             #
+# Main                                                                        #
+#                                                                             #
+###############################################################################
+
+for d in $disk_nums; do
+  disk="hdisk$d"
+  # set disk attributes
+  set_attr $disk queue_depth 255
+  set_attr $disk max_coalesce 0x40000
+  set_attr $disk max_transfer 0x100000
+  set_attr $disk reserve_policy no_reserve
+  set_attr $disk algorithm round_robin
+done
+
+#
+# Set up "disk" and "new_disks" arrays in preparation for renaming.
+# If "prefix" is blank, the two arrays have the same disk numbers. 
+# Furthermore, if new disk numbers is specified, the disks will be
+# renamed to the new disk numbers. The new disk numbers is applicable
+# only when prefix is set, otherwise the new disk numbers are ignored.
+#
+typeset -a disks
+typeset -a new_disks
+num_disks=0
+num_new_disks=0
+if [ -z "$prefix" ]; then
+  # No rename needed
+  if [ -n "$new_disk_nums" ]; then
+    echo "WARNING: new disk numbers specified in config.asmdisks.diskgroups but prefix is blank in disk group $diskgroup. New disk numbers is ignored."
+  fi
+  for d in $disk_nums; do
+    ((num_disks++))
+    disks+=("$d")
+    new_disks+=("$d")
+  done
+  num_new_disks=$num_disks
+else
+  if [ -n "$new_disk_nums" ]; then
+    # rename disks and to new disk numbers
+    num_disks=0
+    for d in $disk_nums; do
+      ((num_disks++))
+      disks+=("$d")
+    done
+    num_new_disks=0
+    for d in $new_disk_nums; do
+      ((num_new_disks++))
+      new_disks+=("$d")
+    done
+    if [ $num_disks -ne $num_new_disks ]; then
+      echo "ERROR: Number of disks mismatch between disk numbers and new disk numbers in disk group $diskgroup."
+      exit 1
+    fi
+  else
+    # rename disks and to same disk numbers
+    for d in $disk_nums; do
+      ((num_disks++))
+      disks+=("$d")
+      new_disks+=("$d")
+    done
+    num_new_disks=$num_disks
+  fi
+fi
+
+# Rename disks if prefix is specified on the disk group.
+# Next set disk attributes, ownership, and permissions.
+((num_disks--))
+for i in {0..$num_disks}; do
+  if [ -n "$prefix" ]; then
+    newname=${prefix}${new_disks[$i]}
+    len=$(echo $newname | wc -c)
+    ((len -= 1))  # wc -c reports one more char
+    if [ $len -gt $max_num_chars ]; then
+      echo "ERROR: $newname > $max_num_chars characters in disk group $disksgroup."
+      exit 1
+    fi
+    # Make sure the new disk name doesn't exist
+    ls /dev/$newname > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      echo "ERROR: Failed to rename hdisk${disks[$i]} to /dev/$newname in disksgroup $disksgroup because it already exists."
+      exit 1
+    else
+      runcmd_nz "rendev -l hdisk${disks[$i]} -n $newname"
+      echo "hdisk${disks[$i]} changed - renamed to $newname"
+      echo "hdisk${disks[$i]} renamed to $newname"                      >> {{ done_dir }}/renamed_disks
+        # in case we need to undo...
+      echo "# if need to undo: rendev -l $newname -n hdisk${disks[$i]}" >> {{ done_dir }}/renamed_disks
+    fi
+  else
+    # Prefix not set
+    newname=hdisk${disks[$i]}
+  fi
+
+  # At this point, hdisks have been renamed (if needed) as $newname. If 
+  # no rename is needed, the disk is named as $newname too.
+
+  curr_ownership="$(ls -l /dev/r$newname | awk '{ printf("%s:%s", $3, $4) }')"
+  if [ "$curr_ownership" != "$ownership" ]; then
+    runcmd_nz "chown $ownership /dev/r$newname"
+    echo "$newname changed - ownership is $ownership."
+  fi
+
+  curr_mode=$(ls -l /dev/r$newname | awk '{ print $1 }' | perl -e '
+    $line = <>;
+    if ($line =~ /^(.)(.)(.)(.)(.)(.)(.)(.)(.)(.)/) {
+      $u += 4 if $2 eq "r";
+      $u += 2 if $3 eq "w";
+      $u += 1 if $4 eq "x";
+      $g += 4 if $5 eq "r";
+      $g += 2 if $6 eq "w";
+      $g += 1 if $7 eq "x";
+      $o += 4 if $8 eq "r";
+      $o += 2 if $9 eq "w";
+      $o += 1 if $10 eq "x";
+      printf("%d%d%d", ${u}, ${g}, ${o});
+    }')
+
+  if [ $curr_mode != "$mode" ]; then
+    runcmd_nz "chmod $mode /dev/r$newname"
+    echo "$newname changed - permissions is $mode."
+  fi
+done
+
+exit 0

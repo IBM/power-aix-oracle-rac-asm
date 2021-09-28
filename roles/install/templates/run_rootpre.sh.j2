@@ -1,0 +1,52 @@
+# Copyright (c) IBM Corporation 2021
+
+# This script runs rootpre.sh.
+
+# Idempotent: yes
+
+if [ ! -f ./helper.sh ]
+then
+    echo "$(basename $0): helper.sh not found in $(pwd)"
+    exit 1
+fi
+
+. ./helper.sh
+
+check_user_is root
+
+################################################################################
+#                                                                              #
+# Main                                                                         #
+#                                                                              #
+################################################################################
+
+grid_home="{{ config.grid_home | flatten | list | join ('/') }}"
+
+cd $grid_home
+
+function exit_on_errors {
+  log=$1
+
+  if egrep -qi "Aborting pre-installation procedure|error|fail" $log; then
+    echo "ERROR: rootpre.sh failed, check $log."
+    exit 1
+  fi
+}
+
+rootpre_out=$(ls -t /tmp | grep rootpre.out_ | head -1)
+if [ -z "$rootpre_out" ]; then
+  # No /tmp/rootpre.out_*
+  runcmd_nz "./clone/rootpre.sh"
+  rootpre_out=$(ls -t /tmp | grep rootpre.out_ | head -1)
+  exit_on_errors /tmp/$rootpre_out
+  echo "rootpres.sh changed (succeeded)"
+else
+  # rootpre ran before, so check /tmp/rootpre.out_* has errors?
+  if egrep -qi 'Aborting pre-installation procedure|error|fail' /tmp/$rootpre_out; then
+    runcmd_nz "./clone/rootpre.sh"
+    # Check for possible errors ...
+    rootpre_out=$(ls -t /tmp | grep rootpre.out_ | head -1)
+    exit_on_errors /tmp/$rootpre_out
+    echo "rootpres.sh changed (succeeded)"
+  fi
+fi

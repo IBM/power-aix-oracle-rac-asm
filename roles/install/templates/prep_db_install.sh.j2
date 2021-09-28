@@ -1,0 +1,101 @@
+# Copyright (c) IBM Corporation 2021
+
+# This script unzips the database and opatch.
+
+# Idempotent: yes
+
+  #+ Source Re-usable functions within helper.sh
+if [ ! -f ./helper.sh ]
+then
+    echo "$(basename $0): helper.sh not found in $(pwd)"; exit 1;
+fi
+. ./helper.sh
+
+  #+ make sure this script is running as this user.
+check_user_is "{{ global.db_owner }}"
+
+################################################################################
+#                                                                              #
+# Main                                                                         #
+#                                                                              #
+################################################################################
+          
+   DONE_DIR="{{ done_dir }}"                                 #+ should be like /tmp/ansible/done
+  DBMS_HOME="{{ config.db_home | flatten | list | join ('/') }}" #+ should be like /acfs/db
+ORACLE_BASE="{{ install.db_rsp.ORACLE_BASE | flatten | list | join('/') }}"   #+ should be like /acfs/base
+     RU_ZIP="{{ install.ora_zips.ora19c_ru | default('') }}" #+ ex:p30899722_190000_AIX64_5L_19.RUP7.zip
+     RU_DIR="{{ config.fs.ofa_fs }}/RU"  #+ reusing the RU for grid !!!
+DB_BASE_ZIP="{{ install.ora_zips.db19c_zip }}"
+ OPATCH_ZIP="{{ install.ora_zips.opatch_zips.latest | default('') }}"
+
+if [ ! -d "$DBMS_HOME" ]; then
+  mkdir -p $DBMS_HOME
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to create DATABASE HOME $DBMS_HOME."
+    exit 1
+  fi
+fi
+
+if [ ! -d "$ORACLE_BASE" ]; then
+  mkdir -p $ORACLE_BASE
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to create ORACLE BASE $ORACLE_BASE."
+    exit 1
+  fi
+fi
+
+base_subdir="{%- if install.ora_zips.base_subdir is defined and
+                    install.ora_zips.base_subdir | default('', true) | length > 0
+             -%}
+                   {{ install.ora_zips.base_subdir }}
+             {%- else -%}
+                   {{ '' }}
+             {%- endif -%}"
+if [ -n "$base_subdir" ]; then
+  export DB_BASE_ZIP_PATH="{{ install.ora_zips.nfs_mount.0 }}/$base_subdir/$DB_BASE_ZIP"
+else
+  export DB_BASE_ZIP_PATH="{{ install.ora_zips.nfs_mount.0 }}/$DB_BASE_ZIP"
+fi
+
+if [ -z "$OPATCH_ZIP" ]; then
+  export OPATCH_ZIP_PATH=""
+else
+  opatch_subdir="{%- if install.ora_zips.opatch_subdir is defined and
+                        install.ora_zips.opatch_subdir | default('', true) | length > 0
+                 -%}
+                      {{ install.ora_zips.opatch_subdir }}
+                 {%- else -%}
+                      {{ '' }}
+                 {%- endif -%}"
+  if [ -n "$opatch_subdir" ]; then
+    export OPATCH_ZIP_PATH="{{ install.ora_zips.nfs_mount.0 }}/$opatch_subdir/$OPATCH_ZIP"
+  else
+    export OPATCH_ZIP_PATH="{{ install.ora_zips.nfs_mount.0 }}/$OPATCH_ZIP"
+  fi
+fi
+
+fail_if_directory_doesnt_exist "$DBMS_HOME"
+fail_if_directory_doesnt_exist "$RU_DIR"
+fail_if_empty_var              "$RU_ZIP"
+fail_if_file_doesnt_exist      "$DB_BASE_ZIP_PATH"
+
+cd $DBMS_HOME
+if [ ! -f "$DONE_DIR/db_unzipped" ]; then
+  # Make sure no left over files/directories (including hidden ones) due to
+  # some sort of failure by unzip -o (overwrite files WITHOUT prompting)
+  runcmd_nz "unzip -o $DB_BASE_ZIP_PATH"
+  touch $DONE_DIR/db_unzipped
+fi
+
+if [ -n "$OPATCH_ZIP_PATH" ]; then
+  if [ ! -f "$OPATCH_ZIP_PATH" ]; then
+    echo "ERROR: Opatch zip path $OPATCH_ZIP_PATH not found."
+    exit 1
+  fi
+  if [ ! -d "OPatch.prev" ]; then
+    mv OPatch OPatch.prev
+    runcmd_nz "unzip -o $OPATCH_ZIP_PATH"
+  fi
+fi
+
+exit 0

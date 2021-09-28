@@ -1,0 +1,616 @@
+---
+# Variable file
+
+# Variables that need updates are tagged with "# !!! update !!!".
+# Although the default values would work, they may not be your preference
+# or following your organization's convention. Review the defaults and make
+# updates as appropriate.
+# NOTE: updates can be made in this file or put the updated variables in 
+#       <role>/vars/main.yml to override the defaults here. Remember
+#       variables are defined in a namespace starting from <role>.
+
+###############################################################################
+global:
+###############################################################################
+
+  # !!! update !!!
+  root_password: "my_password"
+  grid_owner:  &grid_owner  "grid"
+  grid_pgroup: &grid_pgroup "oinstall"
+  db_owner:    &db_owner    "oracle"
+  db_pgroup:   &db_pgroup   "oinstall"
+  # db_pgroup is the primary group for database user, it should match
+  # config.grid_rsp.install.asm.OSASM
+  # grid_pgroup is the primary group for grid user
+  work_dir:   &work_dir "/tmp/ansible"
+  # Do not change the following 4 variables and their values
+  scripts_dir: [ *work_dir, "scripts" ]
+  saved_dir:   [ *work_dir, "saved" ]
+  done_dir:    [ *work_dir, "done" ]
+  files_dir:   [ *work_dir, "files" ]
+
+###############################################################################
+bootstrap:
+###############################################################################
+
+  download_dir: "~"
+  rpm_rte:     "rpm.rte"
+  yum_bundle:  "yum_bundle.tar"
+
+  netsvc_conf: [ "hosts = local, bind4" ]
+
+  resolv_conf:
+    options:  "timeout:1"
+    # Order of nameservers is preserved.
+    # The first list element is for resolving Oracle VIPs and SCAN name.
+    # If the first element does not resolve DNS addresses for downloading RPMs
+    # during installation, the second, third etc. can be specified for that.
+    # The second, third etc. elements will be commented in /etc/resolv.conf
+    # before starting gridSetup.sh/runInstaller.sh becaue Oracle does not allow
+    # more than one nameservers. After gridSetup.sh/runInstaller complete,
+    # the commented out entries will be restored.
+    # !!! update !!!
+    nameservers: [ "192.168.64.1", "W.X.Y.Z" ]
+    # !!! update !!!
+    search:   "mydomain.com"
+
+###############################################################################
+preconfig:    
+###############################################################################
+
+  # Set timezone
+  # See /usr/share/lib/zoneinfo/ for a list of availble values.
+  # https://www.ibm.com/support/pages/managing-time-zone-variable-posix
+  # !!! update !!!
+  tz: "America/Los_Angeles"
+
+  # Configure NTP and aix_timeserver are mutually exclusive.
+
+  # Add AIX network timeserver to /etc/hosts and run setclock.
+  # To disable the AIX network timeserver, set the value to ""
+  # !!! update !!!
+  # aix_timeserver: "W.X.Y.Z"
+  aix_timeserver: ""
+
+  # The NTP settings here are meant to provide basic client/server mode support.
+  # Valid values for state are "present" and "absent". If the environment does
+  # not use NTP then Oracle will use Cluster Time Synchronization Service to
+  # provide synchronization service in the cluster. If the state is "absent",
+  # the AIX xnptd service will be stopped and autostart disabled. If the state is
+  # "present", the time servers in the "ntp_server" will be added to
+  # /etc/ntp.conf. Note that the servers in the "ntp_servers" are the
+  # DESIRED servers in the configuration. Pre-existing servers that are not in
+  # the "ntp_servers" will be deleted. Changes to configuration file are made
+  # only to match the desired servers specified here.
+  # If /etc/ntp.conf has the desired servers already, the file will be left
+  # alone. Valid values for broadcastclient are "present", "absent", and ""
+  # where "" means the default which is "present".
+  # Changes to broadcastclient option and ntp_servers occurs only if the state
+  # is "present".
+  ntp:
+    # !!! update !!!
+    state: present
+    ntp_servers: 
+      - '0.pool.ntp.org prefer'
+      - '1.pool.ntp.org'
+    broadcastclient: present
+
+  # installp files are assumed to be on NFS through <local_mnt>/<subdir> 
+  # directory mount point
+  lpp_src:
+    # !!! update !!!
+    nfs_mount: [
+      # Only one will be mounted based on oslevel (Ver.Rel.Tl) that matches
+      # aix_ver_rel which is set up in init.yml.
+      # NOTE: 
+      # 1) nfs_export should be the value as shown in showmount -e <nfs_server>
+      # 2) Alternatively, if nfs_export is the path that contains the fileset,
+      #    then set subdir to "".
+      # 3) The "local_mnt" must be the same if there are multiple entries.
+      # !!! update !!!
+      # local_mnt   nfs_export                      nfs_server_host aix_ver_rel_tl
+      # ---------   ----------                      -----------    -----------
+      ['/lppsource', '/nim/AIX72TL4_gold/lppsource', 'W.X.Y.Z', '7.2.4' ],
+      ['/lppsource', '/nim/AIX72TL5_gold/lppsource', 'W.X.Y.Z', '7.2.5' ]
+    ]
+
+    # !!! update !!!
+    subdir: 'installp/ppc'
+
+  # AIX required fileset
+  aix_filesets: [
+    'bos.adt.base',
+    'bos.adt.lib',
+    'bos.adt.libm',
+    'bos.perf.libperfstat',
+    'bos.perf.perfstat',
+    'bos.perf.proctools',
+    'bos.loc.utf.EN_US',
+    'bos.rte.security',
+    'bos.rte.bind_cmds',
+    'bos.compat.libs',
+    'xlC.aix61.rte',
+    'xlC.rte',
+    'rsct.basic.rte',
+    'rsct.compat.clients.rte',
+    'xlsmp.msg.EN_US.rte',
+    'xlfrte.aix61',
+    'openssh.base.client',
+    'expect.base',
+    'perl.rte',
+    'Java8_64.jre',
+    'dsm',                      # prereqs: perl.rte, expect.base, Java8_64.jre
+  ]
+
+  # Your environment's desired minimum requirements
+  # No check will be performed if the value is 0
+  # !!! update !!!
+  min_cores: 4
+  min_memory: 32  # in GB
+
+
+###############################################################################
+config:
+###############################################################################
+
+  # This is the volume group from which Oracle Grid HOME filesystem will be
+  # created.
+  vg_name: &oravg "oravg"
+
+  # !!! update !!!
+  ora_vg: [
+    # These are local disks.
+    # Oracle Grid will be installed in a filesystem under the specified VG.
+    # Create volume group task will fail if no entry is in this list.
+    # Valid vg_types: "normal", "big", "scalable".
+    # Refer to
+    # https://www.ibm.com/support/pages/aix-lvm-determining-vg-type-svgsmallbig
+    # "scalable" has options to set MAX number logical volumes (num_lvs) and
+    # MAX number of partitions (num_partitions), but they are not considered
+    # here for the sake of simplicity. Hopefully, the basic parameters
+    # are sufficient.
+    # Only one VG is supported, though it's a list.
+    # "clear_pvids" and "zero_disks" are optional. They must be entered
+    # in straight order. If an option is not needed, enter it as ''.
+    # Don't miss out the commas separator!
+    # NOTE: pp_size must a power of 2 and between 1 and 1024.
+    #
+    # vg_name   pp_size(MB) vg_type    hdisks[,,]    options
+    # ------    ----------  ---------- ----------    -------
+    #dummyvg,    '64',      'big',     ['hdisk10', 'hdisk11'], 'clear_pvids',
+    *oravg,     '256',      "big",     ['hdisk1', 'hdisk2'], 'clear_pvids',  'zero_disks'
+  ]
+
+  fs:
+    # !!! update !!!
+    # The filesystem mount point under which Oracle Grid HOME directory
+    # will be created. This is a string type.
+    ofa_fs: &ofa_fs "/u01/app"
+    # The directory ACFS will be mounted on (mount point directory)
+    # This is a list type.
+    acfs:   &acfs   [ *ofa_fs, *db_owner ]
+
+  # !!! update !!!
+  ora_fs: [
+    # Make sure the size is within the combined capacity of the disks
+    # that make up the volume group.
+    # mountpoint   size    volgroup
+    # ----------   ----    --------
+    # "dummyfs'    "50G",  'dummyvg'
+    *ofa_fs,       "180G",  *oravg,
+  ]
+
+  # The following vars are of list type.
+  grid_base: &grid_base [ *ofa_fs, *grid_owner ]
+  grid_home: &grid_home [ *ofa_fs, "19c", *grid_owner ]
+  db_base:   &db_base   [ *acfs, ]
+  db_home:   &db_home   [ *acfs, "db" ]
+
+  # Set paging space size - the final size, round up to rootvg's partition size.
+  # Space is allocated from rootvg.
+  # AIX install has 512MB configured by default. Set to 0 to leave the size as
+  # is. NOTE: Oracle Grid requires >= 16GB to install.
+  paging_space_MB: 16384
+  
+  # Set the FREE SPACE of the filesystems.
+  # NOTE: Oracle Grid and database install require >= 5GB /tmp free space.
+  fs_sizes: [
+    #mount     Free Space(valid units abbreviations: G, M, K)
+    #-----     ----------------------------------------------
+    "/",       "2G",
+    "/usr",    "3G",
+    "/var",    "1G",
+    "/tmp",    "7G",
+    "/admin",  "1G",
+    "/opt",    "3G",
+    "/home",   "512M",
+  ]
+
+  # The required RPM linux tools that will be installed/validated.
+  linux:
+     # After Ansible has completed Oracle RAC install, VNC is needed to
+     # run ASMCA to configure/administer ASM disk groups and volumes or DBCA
+     # to create databases.
+     # If tightvnc-server is in the list and the RPM is installed successfully,
+     # The VNC passwd files will be created for the user global.db_owner 
+     # and global.db_owner.
+     # Keep "tools" list as is. For additional RPMs, add them to "optional_tools"
+     # variable.
+     tools: [
+        'unzip', 'make', 'tar', 'expect', 'sudo', 'tightvnc-server', 'bash'
+     ]
+     # !!! update !!!
+     optional_tools: [
+       'less', 
+     ]
+
+  grid_groups: &grid_groups [
+    'oinstall', '1000',
+    'dba',      '2000',
+    'asmadmin', '4000',
+    'oper',     '3000',
+    'asmdba',   '5000',
+    'hagsuser', '6000'
+  ]
+
+  # Create a disjoint set of groups for db user or use the same as grid_groups
+  # as needed.
+  db_groups: *grid_groups
+
+  # User attributes
+  # Make sure the pgroup is in either config.grid_groups or config.db_groups.
+  # For grid and db users, they should be consistent with global.grid_pgroup
+  # and global.db_pgroup respectively.
+
+  users:
+    root:
+      uid:          "0"
+      pgid:         "0"
+      pgroup:       "system"
+      home:         "/"
+      groups:       "bin,sys,security,cron,audit,lp"
+      shell:        "/usr/bin/ksh"
+      capabilities: "CAP_BYPASS_RAC_VMM,CAP_PROPAGATE,CAP_NUMA_ATTACH"
+      # root password won't be changed
+      password:       "NOCHANGE"
+      # Oracle Doc ID 1587357.1 recommendation
+      # nofile>1024, nofiles_hard>65536, stack>10240Kb,
+      # stack_hard>10240KB<32768KB, fsize=-1, cpu=-1, data=-1, rss=-1
+      ulimits: >-
+               fsize=-1 data=-1 stack=-1 rss=-1 core=-1 cpu=-1 nofiles=65536
+
+    grid:
+      uid:          "1100"
+      #!!! update !!! should match one config.grid_groups
+      pgid:         "1000"
+      pgroup:       "oinstall"
+      home:         "/home/grid"
+      groups:       "oinstall,dba,asmadmin,oper,asmdba,hagsuser"
+      shell:        "/usr/bin/ksh"
+      capabilities: "CAP_BYPASS_RAC_VMM,CAP_PROPAGATE,CAP_NUMA_ATTACH"
+      # !!! update !!!
+      password:       "grid"
+      # VNC truncates password to 8 chars
+      # !!! update !!!
+      # VNC truncates password to 8 chars
+      vnc_password:   "grid"
+      ulimits: >-
+               fsize=-1 data=-1 stack=-1 rss=-1 core=-1 cpu=-1 nofiles=65536
+
+    oracle:
+      uid:          "1101"
+      #!!! update !!! should match one config.db_groups
+      pgid:         "1000"
+      pgroup:       "oinstall"
+      home:         "/home/oracle"
+      groups:       "oinstall,dba,asmadmin,oper,asmdba,hagsuser"
+      shell:        "/usr/bin/bash"
+      capabilities: "CAP_BYPASS_RAC_VMM,CAP_PROPAGATE,CAP_NUMA_ATTACH"
+      # !!! update !!!
+      password:       "oracle"
+      # VNC truncates password to 8 chars
+      # !!! update !!!
+      vnc_password:   "oracle"
+      ulimits: >-
+               fsize=-1 data=-1 stack=-1 rss=-1 core=-1 cpu=-1 nofiles=65536
+
+  # !!! update !!!
+  cluster_domain: my_domain
+
+  # !!! update !!!
+  networks:
+    # The second column "hostname" is a temporary place holder used to satisfy
+    # mktcpip -h <hostname>, except that ora_pub's "hostname" is used for
+    # AIX hostname, i.e. chdev -l inet0 <ora_pub's hostname>.
+    # Currently, Oracle private networks (ora_pvt1/2) are assumed to be used by
+    # ASM & Interconnect networks. NOTE: "host", "pub", "ora_pub", "ora_pvt1"
+    # and "ora_pvt2" are variable names and should not be changed.
+    # NOTE: For each "host" variable, the IP address must match the address
+    # field (4th column) as well as the "hosts" key in the inventory.yml.
+
+      #name     hostname     intf IP address    netmask         gateway_address
+      #-----    ------------ ---- -----------   --------------  --------------
+      # Example of 3-network, 2-node config
+#    - host: "X.Y.Z.229"
+#      ora_pub:  "ora1        en2 X.Y.Z.229     255.255.255.0    X.Y.Z.1"
+#      ora_pvt1: "ora1-1      en3 10.10.10.1    255.255.255.0"
+#      ora_pvt2: "ora1-2      en4 10.10.20.1    255.255.255.0"
+#    - host: "X.Y.Z.230"
+#      ora_pub:  "ora2        en2 X.Y.Z.230     255.255.255.0    X.Y.Z.1"
+#      ora_pvt1: "ora2-1      en3 10.10.10.2    255.255.255.0"
+#      ora_pvt2: "ora2-2      en4 10.10.20.2    255.255.255.0"
+
+      # Example of 4-network, 2-node config
+#    - host: "X.Y.Z.93"
+#      pub:      "p224n93     en0 X.Y.Z.93      255.255.255.0    X.Y.Z.1"
+#      ora_pub:  "rac91       en1 192.168.64.91 255.255.252.0"
+#      ora_pvt1: "rac91-1     en2 10.10.10.93   255.255.255.0"
+#      ora_pvt2: "rac91-2     en3 10.10.20.93   255.255.255.0"
+#    - host: "X.Y.Z.94"
+#      pub:      "p224n94     en0 X.Y.Z.94      255.255.255.0    X.Y.Z.1"
+#      ora_pub:  "rac92       en1 192.168.64.92 255.255.252.0"
+#      ora_pvt1: "rac92-1     en2 10.10.10.94   255.255.255.0"
+#      ora_pvt2: "rac92-2     en3 10.10.20.94   255.255.255.0"
+
+  # These are the entries that will be inserted in /etc/hosts.
+  # The 3rd list element is an optional aliases. If there's no aliases,
+  # enter it as "[ '' ]".
+  # If '127.0.0.1' entry is present, the AIX supplied '127.0.0.1' entry
+  # will be commented out.
+  # NOTE: AIX 127.0.0.1 default is
+  # 127.0.0.1               loopback localhost     # loopback (lo0) name/address
+  # NOTE: Pre-existing entries not in the list will be deleted.
+  # The convention most people used is to use short hostname in the second
+  # field in /etc/hosts, and let /etc/resolv.conf append domain name as needed
+  # picked up by search entry along with netsvc.conf entry "hosts = local bind4".
+  # Although Oracle DocId: 1330701.1 which applies to Linux x84_64 states that
+  # the localhost entry in /etc/hosts is
+  # 127.0.0.1 localhost.localdomain localhost
+  # but it doesn't say it applies to AIX.
+
+  # !!! update !!!
+  etc_hosts: [
+      # IP address       hostname                  optional aliases
+      # ----------       ------------------------  ---------------------------
+      # 'x.x.x.x'        'myhost',                 [ '', ],
+#      '127.0.0.1',       'localhost',              [ 'localhost.localdomain', ],
+
+      # Example of 2-node config
+#      '192.168.64.91',  'rac91',                   [ 'rac91.ppc',],
+#      '192.168.64.92',  'rac92',                   [ 'rac92.ppc',],
+
+      # Private IP addresses for private network interface 1:
+#      '10.10.10.91',  'rac91-1',                [ '', ],
+#      '10.10.10.92',  'rac92-1',                [ '', ],
+
+       # Private IP addresses for private network interface 2:
+#      '10.10.20.91',  'rac91-2',                [ '', ],
+#      '10.10.20.92',  'rac92-2',                [ '', ],
+    ]
+
+  # Define hdisks for various ASM disk groups 
+  asmdisks:
+    mode: '660'
+    diskgroups:
+      # These are shared disks.
+      # If <prefix> is "", hdiskX will not be renamed.
+      # hdiskX will be renamed to <prefix>X or <prefix>Y depending on
+      # new disks numbers are included or not. If new disks numbers is
+      # not included, then hdiskX is renamed to <prefix>X, otherwise <prefix>Y
+      # where Y is the value associated with the corresponding X value.
+      # NOTE: The final new name must not exceed 15 chars.
+      # The raw disks will be chown to global.grid_owner:global.grid_pgroup.
+      # If DG name is "", it is a place holder for future ASM groups, its
+      # purpose to have the permissions and ownership set on these disks.
+      # Regardless of whether a DG name is specified or not, the disks
+      # will have permissions, ownership and device attributes set.
+      # The ownership is taken from global.grid_owner and global.grid_pgroup.
+      # 
+      # Disks might have PVIDs and/or ASM disk group headers which will cause
+      # disk group creation to fail and manual clean up is needed.
+      # However, the options "clear_pvids" and "zero_disks" can clean up the
+      # headers. Make sure disks can be reused before enabling these options.
+      # They are used for clearing the PVIDs on the disks and to zeroing out the
+      # disks respectively. Zeroing out disks ensures there is no ASM disk group
+      # headers.
+      #
+      # The "OCRVOTE" DG name should match
+      # install.grid_rsp.install.asm.diskGroup.name.
+      # The "GIMR" DG name should match
+      # install.grid_rsp.install.asm.gimrDG.name.
+      # The "ACFS" DG name shouild match install.install.asm_acfs.group_name.
+      # The Redundancy for "OCRVOTE", "GIMR", "ACFS" are place holders are
+      # ignored. The redundancy of these diskgroups are set in
+      # install.grid_rsp:install.asm.{diskGroup|gimDG}.redundancy and
+      # install.asm_acfs.redundancy respectively.
+      # If install.grid_rsp.install.configureGIMR is false, "GIMR" DG will not
+      # be created.
+      #
+      # Supported redundancy values are NORMAL and EXTERNAL.
+      #
+      # DG Name  New Prefix      Redundancy  hdisk numbers       [new disk numbers] [clear_pvids] [zero_disks]
+      #--------  --------------  ----------  ------------------ ------------------- ------------- ------------
+      - ["OCRVOTE","ASMOCRVOTE", "",         "23 24 25 26 27 28","1 2 3 4 5 6",     "clear_pvids", "zero_disks"]
+      - ["GIMR",   "ASMGIMR",    "",         "5 6",              "1 2",             "clear_pvids", "zero_disks"]
+      - ["ACFS",   "ASMACFS",    "",         "20 21",            "",                "clear_pvids", "zero_disks"]
+      - ["DATA1",  "ASMDATA",    "NORMAL",   "12 13 14 15",      "1 2 3 4",         "clear_pvids", "zero_disks"]
+      - ["DATA2",  "",           "EXTERNAL", "16 17 18 19",      "",                "clear_pvids", "zero_disks"]
+
+  dsh:
+    # The following entries will be inserted in /etc/environment.
+    # DSH_NODE_LIST specifies the file that will be populated with
+    # the RAC node names.
+    - DSH_CONTEXT=DSH
+    - DSH_NODE_LIST=/.wcoll
+    - DSH_NODE_RCP=/usr/bin/scp
+    - DSH_NODE_RSH=/usr/bin/ssh
+    - DSH_NODE_OPTS=
+
+  # !!! update !!!
+  vnc_hosts:
+    # The list of hosts that will have vnc password file created
+    # in ~/.vnc/vnc_passwd for global.grid_owner and global.db_owner.
+    # Enter the IP addresses of the hosts.
+#    - W.X.Y.Z
+#    - A.B.C.D
+
+
+###############################################################################
+install:
+###############################################################################
+
+  asm_acfs:
+    # group_name should match DG Name defined in config.asmdisks.diskgroups
+    group_name:     "ACFS"
+    # !!! update !!!
+    # dg_redundancy supported values are: NORMAL|EXTERNAL
+    dg_redundancy:  "EXTERNAL"
+    vol_name:       "acfs_vol"
+    # vol_redundancy valid values are: INHERIT|MIRROR|HIGH|UNPROTECTED
+    # !!! update !!!
+    vol_redundancy: "UNPROTECTED"
+    # !!! update !!!
+    vol_size_GB:     "98"
+
+  # !!! update !!!
+  ora_zips:
+    # NOTE: NFS export is the directory as shown in showmount -e <nfs_server>.
+    #       This should not be treated as dir for mounting.
+    #       E.g. <nfs_server>:<some_directory>,
+    #       because <some_directory> can be <export>/<sub_dirs>.
+    #           local mnt pt, NFS export,   NFS server IP
+    #           -----------   ----------    --------------
+    nfs_mount: [ '/repos',     '/repos',     'X.Y.Z.2', ]
+
+
+    # !!! update !!!
+    opatch_subdir: "images/oracle/opatch"
+    opatch_zips:
+      v12_2_0_1_27: &v12_2_0_1_27 "12.2.0.1.27/p6880880_122010_AIX64-5L.zip"
+      v12_2_0_1_25: &v12_2_0_1_25 "12.2.0.1.25/p6880880_122010_AIX64-5L.zip"
+      # If "latest" is not set or doesn't exist, the OPATCH that comes
+      # with Grid will be used.
+      latest:       *v12_2_0_1_27
+
+    # Oracle 19c base release zips
+    # !!! update !!!
+    base_subdir:  "images/oracle/19c"
+    grid19c_zip:  "V982588-01_193000_grid.zip"
+    db19c_zip:    "V982583-01_193000_db.zip"
+
+    # Oracle 19c Release Update zips
+    # !!! update !!!
+    ru_subdir: images/oracle/19c
+    ora19c_ru8:  &ora19c_ru8  "RU19.8/p31305339_190000_AIX64-5L.zip"
+    ora19c_ru10: &ora19c_ru10 "RU19.10/p32226239_190000_AIX64-5L_RU19.10.zip"
+    ora19c_ru11: &ora19c_ru11 "RU19.11/p32545008_190000_AIX64-5L-RU19.11.zip"
+    ora19c_ru12: &ora19c_ru12 "RU19.12/p32895426_190000_AIX64-5L_RU19.12.zip"
+
+    # The following is the RU that will be installed, pick one from above.
+    # Note, the value begins with '*', the remainder portion should match the
+    # one that begins with '&'.
+    ora19c_ru: *ora19c_ru12
+
+  compiler:
+    base_fileset:
+      - xlCcmp.13.1.0
+      - xlCcmp.13.1.0.bundle
+      - xlCcmp.13.1.0.lib
+      - xlCcmp.13.1.0.license
+      - xlCcmp.13.1.0.ndi
+      - xlccmp.13.1.0.ndi
+    fp_fileset:
+      - xlccmp.13.1.0
+      - xlccmp.13.1.0.ndi
+      - xlccmp.13.1.0.lib
+    # If no xlC to install set base_dir to ""
+    # If there's no TL/SP to install, set tl_dir/sp_dir to "".
+    # xLC Compiler Base fileset are assumed to be in <local_mnt>/<base>
+    # TL fileset in <local_mnt>/<tl>
+    # SP fileset in <local_mnt>/<sp>
+    # For TL and SP, ALL files in their respective subdirs will be installed.
+    # hosts is a list of nodes to install xlC.
+    # !!! update !!!
+    hosts:    [ '129.40.76.93' ]
+    base_dir: "xlC/13.1.0.0vacpp"
+    tl_dir:   "xlC/13.1.3.0vacpp"
+    sp_dir:   "xlC/13.1.3.6vacpp"
+    fp_dir:   "xlC/xlC13_FP11"
+    nfs_mount: [
+      # local_mnt   nfs_export           nfs_server_host
+      # --------    ----------           ----------------
+      '/compiler',  '/aix/compilers',    '129.40.105.161'
+    ]
+
+  # !!! update !!!
+  asm_sys_password: &asm_sys_password Sys_Password
+
+  # Refer to <Grid_HOME>/install/response/gridsetup.rsp for the descriptions
+  # of the following variables which follow the same namespace here.
+  # There are many configuration types and the select types are "hard-coded"
+  # hence the parameters are not exposed as variables here.
+  # They are:
+  # oracle.install.option=CRS_CONFIG
+  # oracle.install.crs.config.scanType=LOCAL_SCAN
+  # oracle.install.crs.config.ClusterConfiguration=STANDALONE
+  # oracle.install.crs.config.configureAsExtendedCluster=false
+  # oracle.install.crs.config.gpnp.configureGNS=false
+  # oracle.install.crs.config.storageOption=FLEX_ASM_STORAGE
+
+  grid_rsp:
+    # Following 2 vars are list type.
+    INVENTORY_LOCATION: [ *ofa_fs, 'oraInventory' ]
+    ORACLE_BASE:        [ *grid_base ]
+    install:
+      crs:
+        config:
+          gpnp:
+            # !!! update !!!
+#            scanName: rac91-scn.mydomain
+            scanPort: 1521
+        configureGIMR: true
+      asm:
+        OSASM: *db_pgroup
+        OSDBA: *db_pgroup
+        # !!! update !!!
+        SYSASMPassword: *asm_sys_password
+        monitorPassword: monitor
+        emAdminPassword:
+        diskGroup:
+          # This is for OCR/VOTE 
+          # name should match DG name in config.asmdisks.diskgroups
+          name: OCRVOTE
+          AUSize: 4
+          # Currently only EXTERNAL and NORMAL are allowed for redundancy
+          redundancy: NORMAL
+        configureGIMRDataDG: true
+        gimrDG:
+          # name should match DG name in config.asmdisks.diskgroups
+          name: GIMR
+          AUSize: 4
+          # Currently only EXTERNAL and NORMAL are allowed for redundancy
+          redundancy: NORMAL
+      config:
+        emAdminUser:
+        emAdminPassword: 
+        # !!! update !!!
+        clusterName: my-cluster
+        # !!! update !!!
+#        clusterNodes: rac91:rac91-vip,rac92:rac92-vip
+
+  # Refer to <DATABASE_HOME>/install/response/db_install.rsp for descriptions
+  # of variables.
+  #
+  db_rsp:
+    INVENTORY_LOCATION: [ *ofa_fs, 'oraInventory' ]
+    ORACLE_BASE:        *db_base
+    db:
+      # Valid values are: EE and SE2
+      InstallEdition:   EE
+    OSDBA_GROUP:        *db_pgroup
+    # Following 4 groups default to OSDBA_GROUP if not set
+    # Should be in one of config.db_groups.
+    OSOPER_GROUP:       oper
+    OSDGDBA_GROUP:
+    OSKMDBA_GROUP:
+    OSRACDBA_GROUP: 

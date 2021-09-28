@@ -1,0 +1,203 @@
+# Copyright (c) IBM Corporation 2021
+
+# This script creates ACFS disk group, volume, and ACFS for database home.
+# Depends on create_asm_diskgroup.sh which creates the ASM disk group.
+
+# Idempotent: yes
+
+if [ ! -f ./helper.sh ]
+then
+    echo "$(basename $0): helper.sh not found in $(pwd)"
+    exit 1
+fi
+. ./helper.sh
+
+  #+ make sure this script is running as this user.
+
+grid_owner="{{ global.grid_owner }}"
+check_user_is $grid_owner
+
+################################################################################
+#                                                                              #
+# Main                                                                         #
+#                                                                              #
+################################################################################
+
+      group_name="{{ install.asm_acfs.group_name }}"
+   dg_redundancy="{{ install.asm_acfs.dg_redundancy }}"
+        vol_name="{{ install.asm_acfs.vol_name }}"
+  vol_redundancy="{{ install.asm_acfs.vol_redundancy }}"
+      vol_size_GB="{{ install.asm_acfs.vol_size_GB }}"
+       grid_home="{{ config.grid_home | flatten | list | join ('/') }}"
+            acfs="{{ config.fs.acfs | flatten | list | join('/') }}"
+         dg_name="{{ install.asm_acfs.group_name }}"
+         db_home="{{ config.db_home | flatten | list | join('/') }}"
+       acfs_user="{{ global.db_owner }}"
+      acfs_group="{{ global.db_pgroup }}"
+asm_sys_password="{{ install.asm_sys_password }}"
+dg_entry="{%- set dg_name = install.asm_acfs.group_name | default('') -%}
+          {%- for dg_entry in config.asmdisks.diskgroups -%}
+            {%- if dg_entry.0 == install.asm_acfs.group_name -%}
+              {{ dg_entry.0 | default('') + ':' +
+                 dg_entry.1 | default('') + ':' +
+                 dg_entry.2 | default('') + ':' +
+                 dg_entry.3 | default('') + ':' +
+                 dg_entry.4 | default('')
+              }}
+            {%- endif -%}
+          {%- endfor -%}"
+IFS=':'
+set -A fields $dg_entry
+      dg_name="${fields[0]}"
+       prefix="${fields[1]}"
+   redundancy="${fields[2]}"
+    disk_nums="${fields[3]}"
+new_disk_nums="${fields[4]}"
+IFS=' '
+
+#echo "DEBUG: arg group_name=$group_name"
+#echo "DEBUG: arg dg_redundancy=$dg_redundancy"
+#echo "DEBUG: arg vol_name=$vol_name"
+#echo "DEBUG: arg vol_redundancy=$redundancy"
+#echo "DEBUG: arg vol_size_GB=$vol_size_GB"
+#echo "DEBUG: arg grid_home=$grid_home"
+#echo "DEBUG: arg acfs=$acfs"
+#echo "DEBUG: arg dg_name=$dg_name"
+#echo "DEBUG: arg db_home=$db_home"
+#echo "DEBUG: arg acfs_user=$acfs_user"
+#echo "DEBUG: arg acfs_group=$acfs_group"
+#echo "DEBUG: arg asm_sys_password=$asm_sys_password"
+#echo "DEBUG: arg dg_entry=$dg_entry"
+#echo "DEBUG: following extracted from dg_entry"
+#echo "DEBUG: arg dg_name=$dg_name"
+#echo "DEBUG: arg prefix=$prefix"
+#echo "DEBUG: arg redundancy=$redundancy"
+#echo "DEBUG: arg disk_nums=$disk_nums"
+#echo "DEBUG: arg new_disk_nums=$new_disk_nums"
+
+#
+# Check sanity of variables
+# 
+[ -z "$dg_name" ] && echo "ERROR: dg_name cannot be empty." && exit 1;
+
+[ -z "$group_name" ] && echo "ERROR: install.asm_acfs.group_name cannot be empty." && exit 1
+
+[ -z "$dg_redundancy" ] && echo "ERROR: install.asm_acfs.dg_redundancy cannot be empty." && exit 1
+
+[ -z "$vol_name" ] && echo "ERROR: install.asm_acfs.vol_name cannot be empty." && exit 1
+
+[ -z "$vol_redundancy" ] && echo "ERROR: install.asm_acfs.vol_redundancy cannot be empty." && exit 1
+
+[ -z "$vol_size_GB" ] && echo "ERROR: install.asmi_acfs.vol_size_GB cannot be empty." && exit 1
+
+if ! echo $vol_size_GB | egrep -q '^[[:digit:]]+$'; then
+  echo "ERROR: install.asmi_acfs.vol_size_GB \"$vol_size_GB\" has non-numeric character(s)."
+  exit 1
+fi
+
+[ -z "$grid_home" ] && echo "ERROR: grid_home cannot be empty." && exit 1
+
+if [ ! -d $grid_home ]; then
+  echo "ERROR grid home directory $grid_home not found."
+  exit 1
+fi
+
+# Verify install.asm.acfs.group_name and
+# config.asmdisks.diskgroups.<DG Name> (dg_name) are consistency.
+if [ "$group_name" != "$dg_name" ]; then
+  echo "ERROR: install.asm.acfs.group_name ($group_name) are not consistency with config.asmdisks.diskgroups' $dg_name."
+  exit 1;
+fi
+
+if [ ! -f ./create_asm_diskgroup.sh ]; then
+  echo "ERROR: create_asm_diskgroup.sh not found."
+  exit 1
+fi
+
+  #+ 3. Create disk groups by specifying the following command and parameters:
+  #+ 	-createDiskGroup
+  #+ 		[-diskString <disk discovery path>]
+  #+ 		(-diskGroupName <disk group name>
+  #+ 			(-disk <disk path> [-diskName <disk name>] |
+  #+ 			 -diskList <comma separated disk list>
+  #+ 				[-diskSize <disk size in MB>] 
+  #+ 				[-failureGroups <comma separated failure group name list>] 
+  #+ 				[-quorumFailureGroups <comma separated failure group name list>] 
+  #+ 				[-sites <site name>] 
+  #+ 				[-force|-noforce] 
+  #+ 				[-quorum|-noquorum])
+  #+ 			[-redundancy <HIGH|NORMAL|EXTERNAL|FLEX|EXTENDED>]
+  #+ 			[-au_size <1 ~ 64>]
+  #+ 			[-compatible.asm <11.2.0.2 ~ 12.2>]
+  #+ 			[-compatible.rdbms <11.2.0.2 ~ 12.2>]
+  #+ 			[-compatible.advm <11.2.0.2 ~ 12.2>]
+  #+ 			[-sector_size.physical <512, 4k>]
+  #+ 			[-sector_size.logical <512, 4k>]
+  #+ 			[-autoLabel <automatically generates AFD labels, if label prefix is
+  #+                                 not specified then the disk group name is used as prefix>])
+  #+ 			[-labelPrefix <Label prefix will be used to create AFD labels>]
+  #+ 		[-sysAsmPassword <SYS user password>]
+
+#
+# Create ACFS disk group
+#
+if ! $grid_home/bin/asmcmd lsdg $group_name 2>/dev/null | grep -q $group_name; then
+  ./create_asm_diskgroup.sh $group_name $dg_redundancy $grid_owner $grid_home "$prefix" "$disk_nums" "$new_disk_nums"
+  if [ $? -ne 0 ]; then
+    exit 1
+  fi
+fi
+
+#
+# Create volume
+#
+  # Create volumes by specifying the following command and parameters:
+  # 	-createVolume
+  # 		(-volumeName <ASM volume name>
+  # 		-volumeDiskGroup <ASM disk group name for the volume>
+  # 		-volumeSizeGB <ASM volume size in GB>
+  # 		[-volumeRedundancy <INHERIT|MIRROR|HIGH|UNPROTECTED>])
+  # 		[-sysAsmPassword <SYS user password>]
+
+if echo "volinfo -G $group_name $vol_name" | \
+    $grid_home/bin/asmcmd 2>&1 | grep -q "$vol_name not found"; then
+  $grid_home/bin/asmca -silent -createVolume \
+     -volumeName       $vol_name \
+     -volumeDiskGroup  $group_name \
+     -volumeSizeGB     $vol_size_GB \
+     -volumeRedundancy $vol_redundancy
+  error_if_non_zero $? "asmca -createVolume: Creating volume $vol_name failed"
+  echo "Volume $vol_name changed (created successfully)."
+else
+  echo "Volume $vol_name already exists."
+fi
+
+# $grid_home/bin/asmca -silent -createACFS ...
+# Followed by running as root: /ora/base/cfgtoollogs/asmca/scripts/acfs_script.sh
+  #        -createACFS
+  #                (-acfsVolumeDevice <ASM volume device>)
+  #                (-acfsMountPoint <existing host file system path>)
+  #                [-acfsUserName <ACFS user name>]
+  #                [-acfsGroupName <ACFS group name>]
+  #                [-sysAsmPassword <SYS user password>]
+
+#
+# Create ACFS
+#
+if ! $grid_home/bin/srvctl status filesystem | grep -q "$acfs is mounted"; then
+  vol_device=$($grid_home/bin/asmcmd volinfo -G $dg_name $vol_name | awk '/Volume Device/ { print $NF }')
+  [ -z "$vol_device" ] && echo "ERROR: Failed to find volume device for asmc -createACFS." && exit 1
+
+  $grid_home/bin/asmca -silent -createACFS \
+     -acfsVolumeDevice $vol_device \
+     -acfsMountPoint   $acfs \
+     -acfsUserName     $acfs_user \
+     -acfsGroupName    $acfs_group \
+     -sysAsmPassword   $asm_sys_password
+  error_if_non_zero $? "asmca -createACFS: Failed to create ACFS in $volume_device volume."
+  echo "ACFS changed - created on mount point $acfs but still need to run acfs_script.sh as root."
+else
+  echo "ACFS $acfs already exists."
+fi
+
+exit 0

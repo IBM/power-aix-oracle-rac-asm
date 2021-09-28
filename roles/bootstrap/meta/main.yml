@@ -1,0 +1,19 @@
+---
+# Copyright (c) IBM Corporation 2021
+
+galaxy_info:
+  role_name: bootstrap
+  author: Tommy Tse
+  description: Ansible role for bootstrap
+  company: IBM
+
+  license: Apache-2.0
+
+  min_ansible_version: 2.9
+
+  platforms:
+  - name: AIX
+    versions: 7.2
+
+  galaxy_tags: [aix]
+  dependencies: []

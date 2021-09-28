@@ -1,0 +1,13 @@
+galaxy_info:
+  role_name: config
+  author: Tommy Tse
+  description: Ansible role to configure and check the AIX environment before Oracle RAC/database installation
+  company: IBM
+
+  license: Apache-2.0
+
+  min_ansible_version: 2.9
+
+  galaxy_tags: [aix]
+
+  dependencies: []

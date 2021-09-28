@@ -1,0 +1,44 @@
+# Copyright (c) IBM Corporation 2021
+
+# This scripts records the UIDs of shared ASM disks in {{ done_dir }}/dsks_uids_done.
+
+if [ ! -f ./helper.sh ]
+then
+    echo "$(basename $0): helper.sh not found in $(pwd)"
+    exit 1
+fi
+
+. ./helper.sh
+
+  #+ make sure this script is running as this user.
+check_user_is root
+
+################################################################################
+#                                                                              #
+# Main                                                                         #
+#                                                                              #
+################################################################################
+
+rm -f "{{ done_dir }}/dsks_uids_done" "{{ done_dir }}/dsks_uids_error"
+
+nums="{{ shared_asmdisk_nums }}"
+
+for d in ${nums}; do
+  hdisk="hdisk$d"
+  ls /dev/$hdisk 2>&1 >/dev/null
+  if [ $? -ne 0 ]; then
+    echo "ERROR: $hdisk not found"
+    exit 1
+  fi
+  uid=$(lsattr -El $hdisk | awk '/unique/ {print $2}')
+  if [ $? -ne 0 ]; then
+    echo "ERROR: lsattr -El $hdisk failed."
+    mv "{{ done_dir }}/dsks_uids_done" "{{ done_dir }}/dsks_uids_errors"
+    exit 1
+  fi
+  echo "$hdisk $uid" >> "{{ done_dir }}/dsks_uids_done"
+done
+
+echo "Shared ASM disks UIDs retrieval succeeded."
+
+exit 0

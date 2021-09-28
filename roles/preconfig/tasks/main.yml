@@ -1,0 +1,176 @@
+---
+# Copyright (c) IBM Corporation 2021
+
+# tasks file for preconfig role
+
+- name: Run initialization tasks
+  include_tasks: init.yml
+  when: not init_done is defined
+
+- name: Copy lsconf.pl
+  copy:
+    src: roles/preconfig/files/lsconf.pl
+    dest: "{{ scripts_dir }}/lsconf.pl"
+    mode: 0700
+
+- name: Check for miniumum CPU cores and memory
+  command: "perl {{ scripts_dir }}/lsconf.pl -c {{ preconfig.min_cores }} -m {{ preconfig.min_memory }}"
+  register: lsconf_out
+  when: preconfig.min_cores is defined and preconfig.min_memory is defined
+  changed_when: lsconf_out.stdout is search('changed')
+
+- name: Copy oslevel_check_aix7.pl
+  copy:
+    src:  roles/preconfig/files/oslevel_check_aix7.pl
+    dest: "{{ scripts_dir }}/oslevel_check_aix7.pl"
+    mode: 0700
+
+- name: Check for minimum AIX level
+  command: "perl {{ scripts_dir }}/oslevel_check_aix7.pl"
+  register: oslevel_check_aix7_out
+  failed_when: oslevel_check_aix7_out is search('no data')
+  changed_when: oslevel_check_aix7_out.stdout is search('changed')
+
+- name: Copy oslevel_consistency_check.pl
+  copy:
+    src:  ./roles/preconfig/files/oslevel_consistency_check.pl
+    dest: "{{ scripts_dir }}/oslevel_consistency_check.pl"
+  when: inventory_hostname == first_host
+
+- name: Run oslevel_consistency_check.pl
+  command:
+    cmd:  "perl ./roles/preconfig/files/oslevel_consistency_check.pl \"{{ rac_hosts | trim }}\""
+  delegate_to: localhost
+  changed_when: False
+  when: inventory_hostname == first_host
+
+- name: Change timezone
+  command: "/usr/bin/chtz {{ preconfig.tz }}"
+  failed_when: not lookup('pipe', ssh_root_conn + ' egrep "^TZ=' + preconfig.tz + '" /etc/environment', errors='ignore')
+  when:
+    - preconfig.tz is defined and preconfig.tz | length > 0
+    - not lookup('pipe', ssh_root_conn + ' egrep "^TZ=' + preconfig.tz + '" /etc/environment', errors='ignore')
+
+- name: Check for exclusiveness of AIX timeserver and NTP
+  fail:
+    msg: "Invalid timeserver configuration.\nSetting for AIX timserver and NTP are exclusive. (Refer to preconfig.aix_timeserver and preconfig.ntp.state)"
+  when:
+    - preconfig.aix_timeserver is defined and preconfig.aix_timeserver | length > 0
+    - preconfig.ntp.state == 'present'
+
+- name: Copy aix_timeserver.sh
+  copy:
+    src: ./files/aix_timeserver.sh
+    dest: "{{ scripts_dir }}/aix_timeserver.sh"
+    mode: '700'
+  when: preconfig.aix_timeserver is defined and preconfig.aix_timeserver | length > 0
+
+- name: Add AIX timeserver and run setclock
+  command:
+     cmd:   "ksh93 ./aix_timeserver.sh {{ preconfig.aix_timeserver }}"
+     chdir: "{{ scripts_dir }}"
+  when: preconfig.aix_timeserver is defined and preconfig.aix_timeserver | length > 0
+  register: aix_timeserver_out
+  changed_when: aix_timeserver_out.stdout is search('changed')
+
+- name: Copy configure_ntp.sh
+  copy:
+    src:  roles/preconfig/files/configure_ntp.sh
+    dest: "{{ scripts_dir }}/configure_ntp.sh"
+    mode: 0700
+  when: preconfig.ntp.state == 'present'
+
+- name: Configure NTP
+  command:
+    cmd:   "ksh93 ./configure_ntp.sh {{ preconfig.ntp.ntp_servers | join(' ') +
+                                       ' broadcastclient:' +
+                                       preconfig.ntp.broadcastclient }}"
+    chdir: "{{ scripts_dir }}"
+  register: configure_ntp_out
+  when:
+    - preconfig.ntp.state == 'present'
+    - not lookup('pipe', ssh_root_conn + ' ps -ef | grep \'xntpd -x\' | grep -v grep' , errors='ignore')
+  changed_when: configure_ntp_out.stdout is search('changed')
+
+- name: Copy disable_ntp.sh
+  copy:
+    src: roles/preconfig/files/disable_ntp.sh
+    dest: "{{ scripts_dir }}/disable_ntp.sh"
+    mode: 0700
+  when: preconfig.ntp.state == 'absent'
+
+- name: Disable NTP service upon reboot and stop the xntp service
+  command:
+    cmd:   "ksh93 ./disable_ntp.sh {{ saved_dir }}"
+    chdir: "{{ scripts_dir }}"
+  register: disable_ntp_out
+  when: preconfig.ntp.state == 'absent'
+  changed_when: disable_ntp_out.stdout is search('changed')
+
+- name: Fail if lpp source nfs_mount is missing
+  fail:
+    msg: "preconfig.lpp_src.nfs_mount is missing"
+  when: preconfig.lpp_src.nfs_mount | default([], true) | length == 0
+
+- name: Fail if lpp source nfs_mount is invalid"
+  fail:
+    msg: "preconfig.lpp_src.nfs_mount is invalid"
+  loop: "{{ preconfig.lpp_src.nfs_mount }}"
+  when: item | default([], true) | length < 4
+
+- name: Check NFS export for lpp source is valid
+  shell:
+    cmd: "showmount -e {{ item.2 }} | grep \"{{ item.1 }} \""
+  loop: "{{ preconfig.lpp_src.nfs_mount }}"
+  register: showmount_lpp_out
+  when: aix_ver_rel_tl == item.3
+  changed_when: False
+  failed_when: showmount_lpp_out.rc != 0
+
+- name: Configure NFS mount for lpp source
+  ibm.power_aix.filesystem:
+    filesystem:  "{{ item.0 }}"
+    device:      "{{ item.1 }}"
+    nfs_server:  "{{ item.2 }}"
+    state:       'present'
+    permissions: 'ro'
+    auto_mount:  'yes'
+  loop: "{{ preconfig.lpp_src.nfs_mount }}"
+  when:
+    - aix_ver_rel_tl == item.3
+    - not lookup('pipe', ssh_root_conn + ' grep ^' + item.0 + '\:' + ' /etc/filesystems', errors='ignore')
+
+- name: Check lpp source mount point exists
+  file:
+    path:  "{{ item.0 }}"
+    state: directory
+  loop: "{{ preconfig.lpp_src.nfs_mount }}"
+  when: not lookup('pipe', ssh_root_conn + ' ls -d ' + item.0, errors='ignore')
+
+- name: NFS mount lpp source
+  ibm.power_aix.mount:
+    mount_dir: "{{ item.0 }}"
+    state:     directory
+  loop: "{{ preconfig.lpp_src.nfs_mount }}"
+  when: not lookup('pipe', ssh_root_conn + ' mount | grep ' + '\"' + item.0 + ' ' + '\"', errors='ignore')
+
+- name: Install additional AIX filesets
+  command:
+    cmd:   "/usr/sbin/installp -acgXd . -Y {{ item }}"
+    chdir: "{{ preconfig.lpp_src.nfs_mount.0.0 }}
+           {%- if preconfig.lpp_src.subdir is defined and
+                  preconfig.lpp_src.subdir | default('', true) | length > 0
+           -%}
+              {{ '/' + preconfig.lpp_src.subdir }}
+           {%- endif -%}"
+  loop:    "{{ preconfig.aix_filesets }}"
+  when: not lookup('pipe', ssh_root_conn + ' /usr/bin/lslpp -l ' + item + '*', errors='ignore')
+
+- name: Clear errpt logs
+  command: /usr/bin/errclear 0
+  when: lookup('pipe', ssh_root_conn + ' errpt | wc -l', errors='ignore') | int > 0
+
+- name: End of preconfig role
+  debug:
+    msg: "End of preconfig role."
+

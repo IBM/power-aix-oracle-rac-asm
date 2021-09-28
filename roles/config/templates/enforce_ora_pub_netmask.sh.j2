@@ -1,0 +1,39 @@
+# Copyright (c) IBM Corporation 2021
+
+# This scripts enforces 'ora_pub' netmask.
+
+# Idempotent: N/A
+
+
+if [ ! -f ./helper.sh ]
+then
+    echo "$(basename $0): helper.sh not found in $(pwd)"
+    exit 1
+fi
+
+. ./helper.sh
+
+  #+ make sure this script is running as this user.
+check_user_is root
+
+################################################################################
+#                                                                              #
+# Main                                                                         #
+#                                                                              #
+################################################################################
+
+enforced_mask="$1"
+shift
+
+errors=0
+while [ $# -ge 2 ]; do
+  $host=$1
+  $netmask=$2
+  if [ $"netmask" != "enforced_mask" ]; then
+    echo "ERROR: Netmask $netmask for 'ora_pub' in $host is invalid, enforced by ${enforced_mask}."
+    ((errors++))
+  shift
+  shift
+done
+
+[ $errors -ne 0 ] && exit 1

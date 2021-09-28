@@ -1,0 +1,469 @@
+---
+# Copyright (c) IBM Corporation 2021
+
+# tasks file for install
+
+- name: Run initialization tasks
+  include_tasks: ../../preconfig/tasks/init.yml
+  when: not init_done is defined
+
+- name: Fail if Database Install Edition invalid
+  fail:
+    msg: "Invalid value \"{{ install.db_rsp.db.InstallEdition }}\" in install.db_rsp.db.InstallEdition. (valid values are \"EE\" and \"SE2\")"
+  when:
+    - inventory_hostname == first_host
+    - not install.db_rsp.db.InstallEdition | regex_search('^EE$|^SE2$')
+
+- name: Fail if compiler nfs_mount invalid
+  fail:
+    msg: "install.compiler.nfs_mount is invalid or missing"
+  when:
+    - install.compiler.base_dir is defined
+    - install.compiler.base_dir | default('', true) != ""
+    - install.compiler.nfs_mount | default([], true) | length != 3
+
+- name: Check NFS export for compiler is valid
+  shell:
+    cmd: "showmount -e {{ install.compiler.nfs_mount.2 }} | grep \"{{ install.compiler.nfs_mount.1 }} \""
+  register: showmount_compiler_out
+  when:
+    - inventory_hostname in install.compiler.hosts
+    - not lookup('pipe', ssh_root_conn + ' grep ^' + install.compiler.nfs_mount.0 + '\:' + ' /etc/filesystems', errors='ignore')
+  changed_when: false
+  failed_when: showmount_compiler_out.rc != 0
+
+- name: Configure NFS mount for compiler
+  ibm.power_aix.filesystem:
+    filesystem:  "{{ install.compiler.nfs_mount.0 }}"
+    device:      "{{ install.compiler.nfs_mount.1 }}"
+    nfs_server:  "{{ install.compiler.nfs_mount.2 }}"
+    fs_type:     'nfs'
+    state:       'present'
+    permissions: 'ro'
+    auto_mount:  'yes'
+  when:
+    - inventory_hostname in install.compiler.hosts
+    - install.compiler.base_dir is defined
+    - install.compiler.base_dir | default('', true) != ""
+    - not lookup('pipe', ssh_root_conn + ' grep ^' + install.compiler.nfs_mount.0 + '\:' + ' /etc/filesystems', errors='ignore')
+
+- name: Check compiler mount point exists
+  file:
+    path:  "{{ install.compiler.nfs_mount.0 }}"
+    state: directory
+
+- name: NFS mount compiler
+  ibm.power_aix.mount:
+    mount_dir: "{{ install.compiler.nfs_mount.0 }}"
+    state:     directory
+  when:
+    - inventory_hostname in install.compiler.hosts
+    - not lookup('pipe', ssh_root_conn + ' mount | grep ' + '\"' + install.compiler.nfs_mount.0 + ' ' + '\"', errors='ignore')
+- name: Install xlC compiler base fileset
+  command:
+    cmd:   "/usr/sbin/installp -acgXd . -Y {{ install.compiler.base_fileset | join(' ') }}"
+    chdir: "{{ install.compiler.nfs_mount.0 }}/{{ install.compiler.base_dir }}"
+  when:
+    - inventory_hostname in install.compiler.hosts
+    - install.compiler.base_dir is defined
+    - install.compiler.base_dir | default('', true) != ""
+    - not lookup('pipe', ssh_root_conn + ' lslpp -l ' + install.compiler.base_fileset.0, errors='ignore')
+
+- name: Install compiler TL fileset
+  command:
+    cmd:   "/usr/sbin/installp -acgXd . -Y ALL"
+    chdir: "{{ install.compiler.nfs_mount.0 }}/{{ install.compiler.tl_dir }}"
+  when: 
+    - inventory_hostname in install.compiler.hosts
+    - install.compiler.base_dir is defined
+    - install.compiler.base_dir | default('', true) != ""
+    - install.compiler.tl_dir is defined
+    - install.compiler.tl_dir | default('', true) != ""
+    - not lookup('pipe', ssh_root_conn + ' lslpp -l xlCcmp.13.1.[1-9]', errors='ignore')
+
+- name: Install compiler SP fileset
+  command:
+    cmd:   "/usr/sbin/installp -acgXd . -Y ALL"
+    chdir: "{{ install.compiler.nfs_mount.0 }}/{{ install.compiler.sp_dir }}"
+  when: 
+    - inventory_hostname in install.compiler.hosts
+    - install.compiler.base_dir is defined
+    - install.compiler.base_dir | default('', true) != ""
+    - install.compiler.tl_dir is defined
+    - install.compiler.tl_dir | default('', true) != ""
+    - install.compiler.sp_dir is defined
+    - install.compiler.sp_dir | default('', true) != ""
+    - not lookup('pipe', ssh_root_conn + ' lslpp -l all | grep ' + '\"' + 'xlccmp.13.1.[1-9][ ]*13.1.[1-9].[1-9]' + '\"', errors='ignore')
+
+- name: Install XLC V13.1 Fixpack 11 (adding support for AIX 7.2)
+  command:
+    cmd:   "/usr/sbin/installp -acgXd . -Y {{ install.compiler.fp_fileset | join(' ') }}"
+    chdir: "{{ install.compiler.nfs_mount.0 }}/{{ install.compiler.fp_dir }}"
+  when:
+    - inventory_hostname in install.compiler.hosts
+    - aix_ver_rel_tl is search('7.2')
+    - install.compiler.base_dir is defined
+    - install.compiler.base_dir | default('', true) != ""
+    - install.compiler.fp_dir is defined
+    - install.compiler.fp | default('', true) != ""
+    - not lookup('pipe', ssh_root_conn + ' lslpp -l all | egrep ' + '\"' + 'xlccmp.13.1.0[ ]*13.1.0.11' + '\"', errors='ignore')
+
+- name: Copy out verify_xlc.sh
+  copy:
+    src:  ./files/verify_xlc.sh
+    dest: "{{ scripts_dir }}/verify_xlc.sh"
+    mode: '0700'
+  when:
+    - inventory_hostname in install.compiler.hosts
+    - install.compiler.base_dir is defined
+    - install.compiler.base_dir | default('', true) != ""
+
+- name: Run verify_xlc.sh
+  command: 
+    cmd:   "ksh93 ./verify_xlc.sh {{ done_dir }}"
+    chdir: "{{ scripts_dir }}"
+  when:
+    - inventory_hostname in install.compiler.hosts
+    - install.compiler.base_dir is defined
+    - install.compiler.base_dir | default('', true) != ""
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/verify_xlc_done', errors='ignore')
+  register: verify_xlc_out
+  changed_when: verify_xlc_out.stdout is search('changed')
+
+- name: Copy oslevel_update.sh
+  copy:
+    src: "files/oslevel_update.sh"
+    dest: "{{ scripts_dir }}/oslevel_update.sh"
+    mode: '700'
+  when:
+    - inventory_hostname in install.compiler.hosts
+    - install.compiler.base_dir is defined
+    - install.compiler.base_dir | default('', true) != ""
+    - install.compiler.tl_dir is defined
+    - install.compiler.tl_dir | default('', true) != ""
+    - lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/verify_xlc_done', errors='ignore') is search('verify_xlc_done')
+
+- name: Run oslevel_update.sh
+  command:
+    cmd:   "ksh93 ./oslevel_update.sh
+           {{ aix_ver_rel_tl }}
+           {{ preconfig.lpp_src.nfs_mount.0.0 }}
+           {%- set dir=preconfig.lpp_src -%}
+           {%- if dir.subdir is defined and dir.subdir | default('', true) != '' -%}
+             {{ '/' + preconfig.lpp_src.subdir }}
+           {%- endif -%}"
+    chdir: "{{ scripts_dir }}"
+  when:
+    - inventory_hostname in install.compiler.hosts
+    - install.compiler.base_dir is defined
+    - install.compiler.base_dir | default('', true) != ""
+    - install.compiler.tl_dir is defined
+    - install.compiler.tl_dir | default('', true) != ""
+    - lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/verify_xlc_done', errors='ignore') is search('verify_xlc_done')
+  register: oslevel_update_out
+  changed_when: oslevel_update_out.stdout is search('changed')
+  
+- name: Fail if Oracle zips nfs_mount invalid
+  fail:
+    msg: "install.ora_zips.nfs_mount is invalid or missing"
+  when:  install.ora_zips.nfs_mount | default([], true) | length != 3
+
+- name: Check NFS export for Oracle zips invalid
+  shell:
+    cmd: "showmount -e {{ install.ora_zips.nfs_mount.2 }} | grep \"{{ install.ora_zips.nfs_mount.1 }} \""
+  register: showmount_ora_zips_out
+  when: not lookup('pipe', ssh_root_conn + ' grep ^' + install.ora_zips.nfs_mount.0 + '\:'+ ' /etc/filesystems', errors='ignore')
+  changed_when: False
+  failed_when: showmount_ora_zips_out.rc != 0
+
+- name: Configure NFS mount for Oracle zip files
+  ibm.power_aix.filesystem:
+    filesystem:  "{{ install.ora_zips.nfs_mount.0 }}"
+    device:      "{{ install.ora_zips.nfs_mount.1 }}"
+    nfs_server:  "{{ install.ora_zips.nfs_mount.2 }}"
+    state:       'present'
+    permissions: 'ro'
+    auto_mount:  'yes'
+  when: not lookup('pipe', ssh_root_conn + ' grep ^' + install.ora_zips.nfs_mount.0 + '\:' + ' /etc/filesystems', errors='ignore')
+
+- name: Check NFS mount point for oracle zips exists
+  file:
+    path:  "{{ install.ora_zips.nfs_mount.0 }}"
+    state: directory
+
+- name: NFS mount Oracle zip files
+  ibm.power_aix.mount:
+    mount_dir: "{{ install.ora_zips.nfs_mount.0 }}"
+  when: not lookup('pipe', ssh_root_conn + ' mount | grep ' + '\"' + install.ora_zips.nfs_mount.0 + ' ' + '\"', errors='ignore')
+
+- name: Template out prep_grid_install.sh
+  template:
+    src:  templates/prep_grid_install.sh.j2
+    dest: "{{ scripts_dir }}/prep_grid_install.sh"
+    mode: '755'
+  when: inventory_hostname == first_host
+
+- name: Run prep_grid_install.sh
+  command:
+    cmd:   "ksh93 ./prep_grid_install.sh"
+    chdir: "{{ scripts_dir }}"
+  when: inventory_hostname == first_host
+  register: prep_grid_install_out
+  become: yes
+  become_user: "{{ global.grid_owner }}"
+  changed_when: prep_grid_install_out.stdout is search('changed')
+
+- name: Template out gen_grid_rsp.pl
+  template:
+    src: templates/gen_grid_rsp.pl.j2
+    dest: "{{ scripts_dir }}/gen_grid_rsp.pl"
+    mode: '700'
+  when: inventory_hostname == first_host
+
+- name: Run gen_grid_rsp.pl
+  command:
+    cmd:   "perl ./gen_grid_rsp.pl"
+    chdir: "{{ scripts_dir }}"
+  when: inventory_hostname == first_host
+  register: gen_grid_rsp_out
+  changed_when: gen_grid_rsp_out.stdout is search('changed')
+
+- name: Template out myruncluvfy.sh
+  template:
+    src:  templates/myruncluvfy.sh.j2
+    dest: "{{ scripts_dir }}/myruncluvfy.sh"
+    mode: '755'
+  when: inventory_hostname == first_host
+
+- name: Run myruncluvfy.sh
+  command:
+    cmd:   "ksh93 ./myruncluvfy.sh"
+    chdir: "{{ scripts_dir }}"
+  register: myruncluvfy_out
+  when:
+    - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
+  become: yes
+  become_user: "{{ global.grid_owner }}"
+  changed_when: myruncluvfy_out.stdout is search('changed')
+
+- name: Template out run_rootpre.sh
+  template:
+    src:  templates/run_rootpre.sh.j2
+    dest: "{{ scripts_dir }}/run_rootpre.sh"
+    mode: '700'
+  when: inventory_hostname == first_host
+
+- name: Run run_rootpre.sh
+  command:
+    cmd:   "ksh93 ./run_rootpre.sh"
+    chdir: "{{ scripts_dir }}"
+  when: inventory_hostname == first_host
+  register: run_rootpre_out
+  changed_when: run_rootpre_out.stdout is search('changed')
+
+- name: Copy out modify_nameserver_entries.sh
+  copy:
+    src:  ./files/modify_nameserver_entries.sh
+    dest: "{{ scripts_dir }}/modify_nameserver_entries.sh"
+    mode: '700'
+
+- name: Run modify_nameserver_entries.sh - comment out entry(ies)
+  command:
+    cmd:   "ksh93 ./modify_nameserver_entries.sh \"{{ bootstrap.resolv_conf.nameservers.0 | default('') }}\" comment_out"
+    chdir: "{{ scripts_dir }}"
+  register: modify_nameserver_entries_out
+  changed_when: modify_nameserver_entries_out.stdout is search('changed')
+  when: lookup('pipe', 'ssh root@' + first_host + ' ' + '\'' + 'cd ' + done_dir + '; ls | egrep -c "db_install_done|grid_install_done"' + '\'' , errors='ignore') != "2"
+
+- name: Template out grid_install.sh
+  template:
+    src:  templates/grid_install.sh.j2
+    dest: "{{ scripts_dir }}/grid_install.sh"
+    mode: '755'
+  when: inventory_hostname == first_host
+
+- name: Run grid_install.sh
+  command:
+    cmd:   "ksh93 ./grid_install.sh"
+    chdir: "{{ scripts_dir }}"
+  when:
+    - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
+  become: yes
+  become_user: "{{ global.grid_owner }}"
+  register: grid_install_out
+  changed_when: grid_install_out.stdout is search('changed')
+
+- name: Copy out check_crs_services.pl
+  copy:
+    src:  ./files/check_crs_services.pl
+    dest: "{{ scripts_dir }}/check_crs_services.pl"
+    mode: '0700'
+  when: inventory_hostname == first_host
+
+- name: Run check_crs_services.pl
+  command:
+    cmd: "perl ./check_crs_services.pl {{ config.grid_home | flatten | list | join('/') }} {{ rac_nodes | trim | regex_replace(' ', ',') }}"
+    chdir: "{{ scripts_dir }}"
+  register: check_crs_services_out
+  changed_when: False
+  when: inventory_hostname == first_host
+
+- name: Copy out check_asm_instances.pl
+  copy:
+    src:  ./files/check_asm_instances.pl
+    dest: "{{ scripts_dir }}/check_asm_instances.pl"
+    mode: '0700'
+  when: inventory_hostname == first_host
+
+- name: Run check_asm_instances.pl
+  command:
+    cmd: "perl ./check_asm_instances.pl {{ config.grid_home | flatten | list | join('/') }} {{ num_nodes }}"
+    chdir: "{{ scripts_dir }}"
+  when: inventory_hostname == first_host
+  changed_when: False
+
+- name: Copy out create_asm_diskgroup.sh
+  copy:
+    src:  ./files/create_asm_diskgroup.sh
+    dest: "{{ scripts_dir }}/create_asm_diskgroup.sh"
+    mode: '755'
+  when: inventory_hostname == first_host
+
+- name: Run create_asm_diskgroup.sh
+  command:
+    cmd: "ksh93 ./create_asm_diskgroup.sh {{ item.0 }} {{ item.2 }}
+                {{ global.grid_owner }} {{ config.grid_home | flatten | list | join('/') }} \"{{ item.1 }}\" \"{{ item.3 }}\" \"{{ item.4 }}\""
+    chdir: "{{ scripts_dir }}"
+  loop: "{{ config.asmdisks.diskgroups }}"
+  become: yes
+  become_user: "{{ global.grid_owner }}"
+  register: create_asm_diskgroup_out
+  when:
+    - inventory_hostname == first_host
+    - not item.0 in [install.asm_acfs.group_name,
+                     install.grid_rsp.install.asm.diskGroup.name,
+                     install.grid_rsp.install.asm.gimrDG.name ]
+  changed_when: create_asm_diskgroup_out.stdout is search('changed')
+
+- name: Template out create_acfs.sh
+  template:
+    src:  ./templates/create_acfs.sh.j2
+    dest: "{{ scripts_dir }}/create_acfs.sh"
+    mode: '700'
+    owner: "{{ global.grid_owner }}"
+    group: "{{ global.grid_pgroup }}"
+  when: inventory_hostname == first_host
+
+- name: Run create_acfs.sh
+  command:
+    cmd: "ksh93 ./create_acfs.sh"
+    chdir: "{{ scripts_dir }}"
+  register: create_acfs_out
+  become: yes
+  become_user: "{{ global.grid_owner }}"
+  when: inventory_hostname == first_host
+  changed_when: create_acfs_out.stdout is search('changed')
+  failed_when: create_acfs_out.stdout | regex_search('error|failed', ignorecase=True)
+
+- name: Fail if acfs_script.sh doesn't exist
+  fail:
+    msg: "ERROR: {{ config.grid_base | flatten | list | join('/') }}/cfgtoollogs/asmca/scripts/acfs_script.sh doesn't exist."
+  when:
+    - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + config.grid_base | flatten | list | join('/') + '/cfgtoollogs/asmca/scripts/acfs_script.sh', errors='ignore')
+
+- name: Run acfs_script.sh
+  command: "{{ config.grid_base | flatten | list | join('/') }}/cfgtoollogs/asmca/scripts/acfs_script.sh"
+  register: acfs_script_out
+  when:
+    - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ' + config.grid_home | flatten | list | join('/') + '/bin/srvctl status filesystem | grep ' + config.fs.acfs | flatten | list | join('/'), errors='ignore')
+  failed_when: acfs_script_out.stdout | regex_search('error|failed', ignorecase=True)
+
+- name: Copy out verify_acfs_mounted.sh
+  copy:
+    src:  ./files/verify_acfs_mounted.sh
+    dest: "{{ scripts_dir }}/verify_acfs_mounted.sh"
+    mode: '0755'
+  register: verify_acfs_mounted_out
+  when: inventory_hostname == first_host
+
+- name: Run verify_acfs_mounted.sh
+  command:
+    cmd: "ksh93 ./verify_acfs_mounted.sh
+          {{ config.grid_home | flatten | list | join('/') }}
+          {{ config.fs.acfs | flatten | list | join('/') }} {{ num_nodes }}"
+    chdir: "{{ scripts_dir }}"
+  register: run_verify_acfs_mounted_out
+  become: yes
+  become_user: "{{ global.grid_owner }}"
+  when: inventory_hostname == first_host
+  failed_when: run_verify_acfs_mounted_out.stdout is search('ERROR')
+  changed_when: False
+
+- name: Template out prep_db_install.sh
+  template:
+    src: templates/prep_db_install.sh.j2
+    dest: "{{ scripts_dir }}/prep_db_install.sh"
+    mode: '755'
+  when: inventory_hostname == first_host
+
+- name: Run prep_db_install.sh
+  command:
+    cmd:  "ksh93 ./prep_db_install.sh"
+    chdir: "{{ scripts_dir }}"
+  become: yes
+  become_user: "{{ global.db_owner }}"
+  register: prep_db_install_out
+  when: inventory_hostname == first_host
+  changed_when: prep_db_install_out.stdout is search('changed')
+  failed_when:  prep_db_install_out.stderr | regex_search('error|fail|not found', ignorecase=True)
+
+- name: Template out gen_db_rsp.pl
+  template:
+    src:  templates/gen_db_rsp.pl.j2
+    dest: "{{ scripts_dir }}/gen_db_rsp.pl"
+    mode: '755'
+  when: inventory_hostname == first_host
+
+- name: Run gen_db_rsp.pl
+  command:
+    cmd:   "perl ./gen_db_rsp.pl"
+    chdir: "{{ scripts_dir }}"
+  register: gen_db_rsp_out
+  when: inventory_hostname == first_host
+  changed_when: gen_db_rsp_out.stdout is search('changed')
+  failed_when: gen_db_rsp_out.stderr | regex_search('error|fail', ignorecase=True)
+
+- name: Template out db_install.sh
+  template:
+    src:  templates/db_install.sh.j2
+    dest: "{{ scripts_dir }}/db_install.sh"
+    mode: '755'
+  when: inventory_hostname == first_host
+  
+- name: Run db_install.sh
+  command:
+    cmd:   "ksh93 ./db_install.sh"
+    chdir: "{{ scripts_dir }}"
+  become: yes
+  become_user: "{{ global.db_owner }}"
+  register: db_install_out
+  when: inventory_hostname == first_host
+  changed_when: db_install_out.stdout is search('changed')
+  failed_when:  db_install_out.stdout | regex_search('error|fail', ignorecase=True)
+
+- name: Run modify_nameserver_entries.sh - uncomment out entry(ies)
+  command:
+    cmd:   "ksh93 ./modify_nameserver_entries.sh
+          {{ bootstrap.resolv_conf.nameservers.0 | default('') }} uncomment_out"
+    chdir: "{{ scripts_dir }}"
+  register: modify_nameserver_entries_out
+  changed_when: modify_nameserver_entries_out.stdout is search('changed')
+  when: lookup('pipe', 'ssh root@' + first_host + ' ' + '\'' + 'cd ' + done_dir + '; ls | egrep -c "db_install_done|grid_install_done"' + '\'' , errors='ignore') == "2"
+
+- name: End of install role
+  debug:
+    msg: "End of install role."

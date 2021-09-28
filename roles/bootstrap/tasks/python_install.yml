@@ -1,0 +1,42 @@
+# Copyright (c) IBM Corporation 2021
+# # Acknowledgement:
+# This file is based on IBM power_aix collection's python_install.yml with
+# enhancements and modifications.
+# Task file to install python using yum.
+---
+
+# EXPAND target paths
+  # chfs fails if the target size is the same as the current!
+  - name: Check current /var size
+    raw: df -m /var | awk '$0 !~ /Filesystem/ {printf "%d", $2}'
+    register: var_fs_size_out
+
+  # rootvg partition size is 250M, /var size must be multiple of 250M
+  - name: Expand /var target directory to 500M 
+    aix_filesystem:
+      filesystem: /var
+      size: 500M
+      state: present
+    when: var_fs_size_out.stdout < '500'
+
+  - name: Check current /opt size
+    raw: df -m /opt | awk '$0 !~ /Filesystem/ {printf "%d", $2}'
+    register: opt_fs_size_out
+
+  # rootvg partition size is 250M, /opt size must be integer multiple of
+  # rootvg partition size which is 250M.
+  - name: Expand /opt target directory to 750M
+    aix_filesystem:
+      filesystem: /opt
+      size: 750M
+      state: present
+    when: opt_fs_size_out.stdout < '750'
+
+  - name: Install/ Update python and requisite rpms
+    yum:
+      name: python
+      state: latest
+
+  - name: Print status
+    debug:
+      msg: Bootstrap attempt of python on {{ inventory_hostname }} has completed

@@ -1,0 +1,137 @@
+# Copyright (c) IBM Corporation 2021
+
+# This script runs on the first node and performs the tasks below
+# before installing grid.
+# 1) unzip grid files
+# 2) move OPatch/ to OPatch.prev/
+# 3) unzip new OPatch
+# 4) unzip Release Update
+
+# Idempotent: yes
+
+if [ ! -f ./helper.sh ]
+then
+    echo "$(basename $0): helper.sh not found in $(pwd)"
+    exit 1
+fi
+
+. ./helper.sh
+
+check_user_is "{{ global.grid_owner }}"
+
+################################################################################
+#                                                                              #
+# Main                                                                         #
+#                                                                              #
+################################################################################
+
+grid_home="{{ config.grid_home | flatten | list | join ('/') }}"
+grid_base="{{ config.grid_base | flatten | list | join ('/') }}"
+ora_zips_dir="{{ install.ora_zips.nfs_mount.0 }}"
+
+#
+# unzip grid 19c base
+#
+[ ! -d $grid_home ] && runcmd_nz "mkdir -p $grid_home"
+[ ! -d $grid_base ] && runcmd_nz "mkdir -p $grid_base"
+
+if [ ! -f "{{ done_dir }}/grid_unzipped" ]; then
+  grid19c_zip="{{ install.ora_zips.grid19c_zip }}"
+  grid19c_zip_path="$ora_zips_dir"
+  base_subdir="{%- if install.ora_zips.base_subdir is defined and
+                      install.ora_zips.base_subdir | default('', true) | length > 0
+               -%}
+                    {{ install.ora_zips.base_subdir }}
+               {%- else -%}
+                    {{ '' }}
+               {%- endif -%}"
+
+  if [ -n "$base_subdir" ]; then
+    grid19c_zip_path="$grid19c_zip_path/$base_subdir"
+  fi
+  grid19c_zip_path="$grid19c_zip_path/$grid19c_zip"
+  if [ ! -f "$grid19c_zip_path" ]; then
+    echo "ERROR: Grid zip file $grid19c_zip_path not found.\n";
+    exit 1
+  fi
+
+  runcmd_nz "( cd $grid_home;  unzip -o $grid19c_zip_path )"
+  touch "{{ done_dir }}/grid_unzipped"
+  echo "$grid_home changed (unzipped)."
+fi
+
+#
+# unzip OPatch
+#
+opatch_zip="{{ install.ora_zips.opatch_zips.latest | default('') }}"
+if [ -n "$opatch_zip" ]; then
+  # user has specified an opatch zip
+  
+  if [ ! -f "{{ done_dir }}/opatch_unzipped" ]; then
+    if [ ! -d "$grid_home/OPatch.prev" ]; then
+
+      opatch_zip_path="$ora_zips_dir"
+      opatch_subdir="{%- if install.ora_zips.opatch_subdir is defined and
+                            install.ora_zips.opatch_subdir | default('', true) | length > 0
+                     -%}
+                        {{ install.ora_zips.opatch_subdir }}
+                     {%- endif -%}"
+      if [ -n "$opatch_subdir" ]; then
+        opatch_zip_path="$opatch_zip_path/$opatch_subdir/$opatch_zip"
+      else
+        opatch_zip_path="$opatch_zip_path/$opatch_zip"
+      fi
+      if [ ! -f "$opatch_zip_path" ]; then
+        echo "ERROR: Opatch zip file $opatch_zip_path not found.\n";
+        exit 1
+      fi
+
+      runcmd_nz "mv $grid_home/OPatch $grid_home/OPatch.prev"
+      echo "$grid_home/OPatch moved to $grid_home/OPatch.prev"
+      runcmd_nz "(cd $grid_home; unzip -o $opatch_zip_path )"
+      touch "{{ done_dir }}/opatch_unzipped"
+      echo "$grid_home/OPatch changed."
+    fi
+  fi
+fi
+runcmd_nz "( $grid_home/OPatch/opatch version )"
+echo $RESOUT
+
+#
+# unzip RU
+#
+ru_zip="{{ install.ora_zips.ora19c_ru | default('') }}"
+if [ -z "$ru_zip" ]; then
+  echo "ERROR: RU must be specified in install.ora_zips.ora19c_ru."
+  exit 1
+fi
+
+if [ ! -f "{{ done_dir }}/ru_unzipped" ]; then
+  ru_zip_path="$ora_zips_dir"
+  ru_dir="{{ config.fs.ofa_fs }}/RU"
+  ru_subdir="{%- if install.ora_zips.ru_subdir is defined and
+                    install.ora_zips.ru_subdir | default('', true) | length > 0
+             -%}
+                  {{ install.ora_zips.ru_subdir }}
+             {%- else -%}
+                  {{ '' }}
+             {%- endif -%}"
+
+  if [ -n "$ru_subdir" ]; then
+    ru_zip_path="$ru_zip_path/$ru_subdir"
+  fi
+  ru_zip_path="$ru_zip_path/$ru_zip"
+  if [ ! -f "$ru_zip_path" ]; then
+    echo "ERROR: RU zip file $ru_zip_path not found.\n";
+    exit 1
+  fi
+
+  [ ! -d $ru_dir ] && runcmd_nz "mkdir -p $ru_dir"
+  ru_name=$(expr "$ru_zip" : '^.*p\([0-9]*\)_.*$')
+  runcmd_nz "( cd $ru_dir; unzip -o $ru_zip_path )"
+  fail_if_directory_doesnt_exist  $ru_dir/$ru_name
+  touch "{{ done_dir }}/ru_unzipped"
+  echo "$ru_dir changed (unzipped)."
+fi
+
+exit 0

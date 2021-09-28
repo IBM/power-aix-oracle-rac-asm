@@ -1,0 +1,342 @@
+---
+# Copyright (c) IBM Corporation 2021
+# Task file for preping the hosts to run Ansible in full functionalty
+# including initial passwordless connections from Ansible controller
+# and Internet access configuration for software downloads.
+
+- name: Fail if root_password not specified
+  fail:
+    msg: global.root_password not specified
+  when: not global.root_password is defined
+
+- name: Fail if nameservers not specified
+  fail:
+    msg: bootstrap.resolv_conf.nameservers not specified
+  when:  not bootstrap.resolv_conf.nameservers is defined
+
+- name: Set fact rac_hosts
+  set_fact:
+    rac_hosts: "{% for h in config.networks %}{{ rac_hosts | default('') + h.host + ' ' }}{% endfor %}"
+  failed_when: not config.networks is defined
+
+- name: Set fact first_host
+  set_fact:
+    first_host: "{{ rac_hosts.split().0 }}"
+  failed_when: not rac_hosts is defined
+  when: not first_host is defined
+
+- name: Create ssh key on localhost
+  command:
+    cmd: ssh-keygen -t rsa -f ~/.ssh/id_rsa -C "" -N ""
+    creates: ~/.ssh/id_rsa
+  delegate_to: localhost
+  register: ssh_keygen_out
+  changed_when: not ssh_keygen_out.stdout is search('already exist')
+  when:
+    - inventory_hostname == first_host
+    - not lookup('pipe', 'ls ~/.ssh/id_rsa', errors='ignore')
+
+- name: Clean up linux_ssh_passwordless.exp on local
+  raw:  /usr/bin/rm -f ./roles/bootstrap/files/linux_ssh_passwordless.exp
+  delegate_to: localhost
+  when: inventory_hostname == first_host
+
+- name: Template out linux_ssh_passwordless.exp
+  template:
+    src:   templates/linux_ssh_passwordless.exp.j2
+    dest:  roles/bootstrap/files/linux_ssh_passwordless.exp
+    mode:  '600'
+  delegate_to: localhost
+  when: inventory_hostname == first_host
+
+- name: Run linux_ssh_passwordless.exp
+  raw: expect ./roles/bootstrap/files/linux_ssh_passwordless.exp {{ inventory_hostname }}
+  register: linux_ssh_passwordless_out
+  changed_when: "'already exist' not in linux_ssh_passwordless_out.stdout"
+  delegate_to: localhost
+
+- name: Add nameserver entries to /etc/resolv.conf
+  raw: |
+    nameservers="{{ bootstrap.resolv_conf.nameservers | join(' ') }}"
+    FILE=/etc/resolv.conf
+    # Delete unwanted nameserver entries if they exist
+    delete_n=""
+    awk '/^nameserver/ { print $2 }' $FILE | while read existing_n
+    do
+      found=0
+      for n in $nameservers; do
+        if [ $existing_n == $n ]; then
+          found=1
+          break
+        fi
+      done
+      [ $found -eq 0 ] && delete_n="$delete_n $existing_n"  
+    done
+    update_cmd=""
+    if [ -n "$delete_n" ]; then
+      for n in $delete_n; do
+        update_cmd="${update_cmd}/$n\nd\n"
+      done
+      echo "${update_cmd}w\nq\n" | ed -s $FILE
+      if [ $? -ne 0 ]; then
+        echo "ERROR: Failed to delete nameservers \"$delete_n\" in ${FILE}."
+        exit 1
+      fi
+      echo "$FILE changed for deleting unwanted nameservers $delete_n"
+    fi
+    # Delete existing nameserver entries if they are out-of-order.
+    # Since unwanted nameserver entries have been deleted, if there are
+    # existing ones, they match the wanted ones but may be out-of-order.
+    typeset -a existing_list
+    existing_i=-1
+    awk '/^nameserver/ { print $2 }' $FILE | while read existing
+    do
+      existing_list+=($existing)
+      ((existing_i++))
+    done
+    if [ $existing_i -ge 0 ]; then
+      typeset -a wanted_list
+      for n in $nameservers; do
+        wanted_list+=($n)
+      done
+      delete_existing_entries=0
+      for i in {0..$existing_i}; do
+        if [ ${wanted_list[$i]} != ${existing_list[$i]} ]; then
+          delete_existing_entries=1
+          break
+        fi
+      done
+      if [ $delete_existing_entries -eq 1 ]; then
+        update_cmd=""
+        for n in {0..$existing_i}; do
+          update_cmd="${update_cmd}/${existing_list[$i]}\nd\n"
+        done
+        echo "${update_cmd}w\nq\n" | ed -s $FILE
+        if [ $? -ne 0 ]; then
+          echo "ERROR: Failed to delete out-of-order namservers in ${FILE}."
+          exit 1
+        fi
+        echo "Delete existing nameserver entries because they are out-of-order."
+      fi
+    fi
+    # Add nameservers if they do not exist
+    update_cmd=""
+    for n in $nameservers; do
+      if ! egrep -q "^nameserver[[:space:]]+$n" $FILE; then
+        update_cmd="a\nnameserver $n\n.\nw\nq\n"
+        echo "$update_cmd" | ed -s $FILE
+        if [ $? -ne 0 ]; then
+          echo "ERROR: Failed to add nameserver $n to ${FILE}."
+          exit 1
+        fi
+        echo "$FILE changed for adding nameserver $n"
+      fi
+    done
+  args:
+    executable: /usr/bin/ksh93
+  register: add_nameserver_out
+  when: bootstrap.resolv_conf.nameservers is defined
+  changed_when: add_nameserver_out.stdout is search('changed')
+
+- name: Add search entry to /etc/resolv.conf
+  raw: |
+    FILE=/etc/resolv.conf
+    if egrep -q '^search[[:space:]]+{{ bootstrap.resolv_conf.search }}' $FILE
+    then
+      echo "search {{ bootstrap.resolv_conf.search }} already exists in ${FILE}."
+    else
+      if egrep -q '^search[[:space:]]+' $FILE
+      then
+        update_cmd="/^search[ ][ ]*\ns/search[ ][ ]*.*/search     {{ bootstrap.resolv_conf.search }}\n.\nw\nq\n"
+        echo "$update_cmd" | ed -s $FILE
+        if [ $? -ne 0 ]; then
+          echo "ERROR: Failed to replace with \"serach {{ bootstrap.resolv_conf.search }}\" in ${FILE}."
+          exit 1
+        fi
+        echo "$FILE changed for replacing with search {{ bootstrap.resolv_conf.search }}"
+      else
+        update_cmd="a\nsearch     {{ bootstrap.resolv_conf.search }}\n.\nw\nq\n"
+        echo "$update_cmd" | ed -s $FILE
+        if [ $? -ne 0 ]; then
+          echo "ERROR: Failed to add \"serach {{ bootstrap.resolv_conf.search }}\" to ${FILE}."
+          exit 1
+        fi
+        echo "$FILE changed for adding search {{ bootstrap.resolv_conf.search }}"
+      fi
+    fi
+  register: add_search_out
+  when: bootstrap.resolv_conf.search is defined
+  changed_when: add_search_out.stdout is search('changed')
+
+- name: Add options entry to /etc/resolv.conf
+  raw: |
+    FILE=/etc/resolv.conf
+    if egrep -q '^options[[:space:]]+{{ bootstrap.resolv_conf.options }}' $FILE
+    then
+      echo "options {{ bootstrap.resolv_conf.options }} already exists in ${FILE}."
+    else
+      if egrep -q '^options[[:space:]]+' $FILE
+      then
+        update_cmd="/^options[ ][ ]*\ns/options[ ][ ]*.*/options    {{ bootstrap.resolv_conf.options }}\n.\nw\nq\n"
+        echo "$update_cmd" | ed -s $FILE
+        if [ $? -ne 0 ]; then
+          echo "ERROR: Failed to replace with \"options {{ bootstrap.resolv_conf.options }}\" in /etc/resolv.conf."
+          exit 1
+        fi
+        echo "$FILE changed for replacing with options {{ bootstrap.resolv_conf.options }}"
+      else
+        update_cmd="a\noptions    {{ bootstrap.resolv_conf.options }}\n.\nw\nq\n"
+        echo "$update_cmd" | ed -s $FILE
+        if [ $? -ne 0 ]; then
+          echo "ERROR: Failed to add \"options {{ bootstrap.resolv_conf.options }}\" to ${FILE}."
+          exit 1
+        fi
+        echo "$FILE changed for adding options {{ bootstrap.resolv_conf.options }}"
+      fi
+    fi
+  register: add_options_out
+  when: bootstrap.resolv_conf.options is defined
+  changed_when: add_options_out.stdout is search('changed')
+
+- name: Remove domain entry in /etc/resolv.conf
+  raw: |
+      FILE=/etc/resolv.conf
+      if egrep -q '^domain' $FILE
+      then
+        echo "/^domain/d\nw\nq\n" | ed -s $FILE
+        echo "domain entry removed in $FILE"
+      fi
+  args:
+    executable: /usr/bin/ksh93
+  register: remove_domain_out
+  changed_when: remove_domain_out.stdout is search('remove')
+
+- name: Add name ordering resolution to /etc/netsvc.conf
+  raw: |
+      FILE=/etc/netsvc.conf
+      typeset -a settings
+      typeset -a all_kws
+      typeset -a delete_kws
+      wanted_kw=""
+      all_kws[0]="hosts"
+      all_kws[1]="host"
+      all_kws[2]="aliases"
+      delete_kws[0]="hosts"
+      delete_kws[1]="host"
+      delete_kws[2]="aliases"
+      settings_i=-1
+      {% for item in bootstrap.netsvc_conf %}
+         ((settings_i++))
+         settings+=("{{ item  }}")
+         kw="{{ item | regex_replace('^([a-z]+)\s*=.*$', '\1') }}"
+         wanted_kws="$wanted_kws $kw"
+      {% endfor %}
+      # Mark unwanted entries
+      for wanted_kw in $wanted_kws; do
+        for i in {0..2}; do
+          kw=${all_kws[$i]}
+          if [ "$wanted_kw" == "$kw" ]; then
+            kw_count=$(egrep -c "^${kw}[ ]*=.*" $FILE)
+            if [ $(egrep -c "^${kw}[ ]*=.*" $FILE) -eq 1 ]; then
+              delete_kws[$i]="keep"
+              break
+            fi
+          fi
+        done
+      done
+      # Delete unwanted entries
+      update_cmd=""
+      do_delete=0
+      delete_kws_str=""
+      for i in {0..2}; do
+        kw=${delete_kws[$i]}
+        if [ "$kw" != "keep" ]; then
+          delete_kws_str="$delete_kws_str ${kw},"
+          count=$(egrep -c "^${kw}[ ]*=.*" $FILE)
+          if [ $count -gt 0 ]; then
+            do_delete=1
+            ((count--))
+            for c in {0..$count}; do
+              update_cmd="${update_cmd}/^${kw}[ ]*=.*\nd\n"
+            done
+          fi
+        fi
+      done
+      if [ $do_delete -eq 1 ]; then
+        echo "${update_cmd}w\nq\n" | ed -s $FILE
+        if [ $? -ne 0 ]; then
+          echo "ERROR: Failed to delete unwanted \"$delete_kws_str\" entry/entries in ${FILE}."
+        fi
+        echo "$FILE changed for deleting unwanted \"$delete_kws_str\" entries."
+      fi
+      # Substitute entries if they exist or add if non-exist
+      update_cmd=""
+      add_kws_str=""
+      for i in {0..$settings_i}; do
+        entry=${settings[$i]}
+        if egrep "^${entry}$" $FILE; then
+          continue
+        fi
+        kw=$(expr "$entry" : '^\([a-z]*\)[ ]*=.*')
+        add_kws_str="$add_kws_str, $kw"
+        if [ $(egrep -c "^${kw}[ ]*=" $FILE) -eq 1 ]; then
+          update_cmd="${update_cmd}/^${kw}[ ]*=.*\ns/${kw}[ ]*=.*/${entry}\n"
+        else
+          update_cmd="${update_cmd}$\na\n${entry}\n.\n"
+        fi
+      done
+      if [ -n "$update_cmd" ]; then
+        echo "${update_cmd}w\nq\n" | ed -s $FILE
+        if [ $? -ne 0 ]; then
+          echo "ERROR: Failed to add/substitute $add_kws_str entry/entries to ${FILE}."
+          exit 1
+        fi
+        echo "$FILE changed for adding/substituting \"${add_kws_str}\" entry/entries."
+      fi
+  args:
+    executable: /usr/bin/ksh93
+  register: netsvc_conf_out
+  when: bootstrap.netsvc_conf is defined
+  changed_when: netsvc_conf_out.stdout is search('changed')
+
+- name: Fail if download_dir not specified
+  fail:
+    msg: download_dir not specified
+  when:  not download_dir is defined
+
+- name: Fail if target_dir not specified
+  fail:
+    msg: target_dir not specified
+  when:  not target_dir is defined
+
+- name: Fail if rpm_src not specified
+  fail:
+    msg: rpm_src not specified
+  when:  not rpm_src is defined
+
+- name: Fail if yum_src not specified
+  fail:
+    msg: yum_src not specified
+  when:  not yum_src is defined
+
+- name: Check for existence of yum
+  raw: "rpm -q --quiet yum && echo true || echo false"
+  register: yum_exists
+  changed_when: not yum_exists.stdout is search("true")
+
+- name: Bootstrap yum
+  include_tasks: "roles/bootstrap/tasks/yum_install.yml"
+  when: not yum_exists.stdout is search("true")
+
+- name: Check for existence of python
+  raw: "rpm -q --quiet python && echo true || echo false"
+  register: python_exists
+  changed_when: not python_exists.stdout is search("true")
+
+- name: Bootstrap python
+  include_tasks: "roles/bootstrap/tasks/python_install.yml"
+  when: not python_exists.stdout is search("true")
+
+- name: End of bootstrap role
+  debug:
+    msg: "End of bootstrap role."

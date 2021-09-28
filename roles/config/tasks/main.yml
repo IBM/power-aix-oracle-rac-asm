@@ -1,0 +1,587 @@
+---
+# Copyright (c) IBM Corporation 2021
+
+# tasks file for config
+
+- name: Run initialization tasks
+  include_tasks: ../../preconfig/tasks/init.yml
+  when: not init_done is defined
+
+- name: Fail if config.fs.ofa_fs not specified
+  fail:
+    msg: "config.fs.ofa_fs is not specified."
+  when: not config.fs.ofa_fs is defined or config.fs.ofa_fs | length == 0
+
+- name: Expand /opt target directory to 750M
+  aix_filesystem:
+    filesystem: /opt
+    size:       750M
+    state:      present
+  when: lookup('pipe', ssh_root_conn + ' df -m /opt | awk ' + '\'' + '$0 !~ /Filesystem/ {printf "%d", $2}' + '\'', errors='ignore') < '750'
+
+- name: Install Linux tools
+  yum:
+    name: "{{ config.linux.tools + config.linux.optional_tools | default([]) }}"
+    state: present
+  register: linux_tools_out
+  failed_when:
+    - (config.linux.tools is not defined) or (linux_tools_out.rc != 0)
+
+- name: Set up groups for Grid and Database owners
+  command: "mkgroup -A id={{ item.1 }} {{ item.0 }}"
+  loop: "{{ ( (config.db_groups   | default([], true)) +
+              (config.grid_groups | default([], true))
+            ) | batch(2) | list
+         }}"
+  when: not lookup('pipe', ssh_root_conn + ' lsgroup ' + item.0, errors='ignore')
+
+- name: Set fact bash_login_shell
+  set_fact:
+    bash_login_shell: "{%- set need_bash = namespace(value = False) -%}
+          {%- for k,v in config.users.items() if v.shell == '/usr/bin/bash' -%}
+            {%- set need_bash.value = True -%}
+          {%- endfor -%}
+          {{ need_bash.value }}"
+
+- name: Fail if login shell is bash but bash not installed
+  fail:
+    msg: "bash login shell needed but not installed."
+  when:
+    - bash_login_shell == true
+    - not lookup('pipe', ssh_root_conn + ' rpm -q bash', errors='ignore')
+
+- name: Copy add_bash_logincfg.sh
+  copy:
+    src:   ./roles/config/files/add_bash_logincfg.sh
+    dest:  "{{ scripts_dir }}/add_bash_logincfg.sh"
+    mode:  '0700'
+  when:
+    - bash_login_shell == True
+
+- name: Run add_bash_logincfg.sh
+  command:
+    cmd:   "ksh93 ./add_bash_logincfg.sh"
+    chdir: "{{ scripts_dir }}"
+  register: add_bash_logincfg_out
+  when:
+    - bash_login_shell == True
+  changed_when: add_bash_logincfg_out.stdout is search('changed')
+
+- name: Create users
+  user:
+    name:   "{{ item.key }}"
+    uid:    "{{ item.value.uid }}"
+    group:  "{{ item.value.pgroup }}"
+    groups: "{{ item.value.groups }}"
+    home:   "{{ item.value.home }}"
+    shell:  "{{ item.value.shell }}"
+    append: "yes"
+  loop: "{{ lookup('dict', config.users) }}"
+  when:
+    - item.key != 'root'
+    - not lookup('pipe', ssh_root_conn + ' grep ^' + item.key + ':' + ' /etc/passwd', errors='ignore')
+
+- name: Change user capabilities
+  command: "chuser capabilities={{ item.value.capabilities }} {{ item.key }}"
+  loop:    "{{ lookup('dict', config.users) }}"
+  when:
+    - item.value.capabilities is defined
+    - item.value.capabilities | length > 0
+    - not lookup('pipe', ssh_root_conn + ' lsuser ' + item.key + ' | grep CAP_BYPASS_RAC_VMM', errors='ignore')
+
+- name: Change non-root user passwords
+  shell: "echo {{ item.key }}:{{ item.value.password }} | /usr/bin/chpasswd"
+  loop:  "{{ lookup('dict', config.users) }}"
+  when:
+    - item.value.password is defined
+    - item.value.password | length > 0
+    - item.key != 'root'
+    - not lookup('pipe', ssh_root_conn + ' grep ^' + item.key + ':! /etc/passwd', errors='ignore')
+
+- name: Don't check to change password
+  command: "/usr/bin/pwdadm -f NOCHECK {{ item.key }}"
+  loop:    "{{ lookup('dict', config.users) }}"
+  when:
+    - item.key != 'root'
+    - not lookup('pipe', ssh_root_conn + ' pwdadm -q ' +  item.key + ' | grep NOCHECK' , errors='ignore')
+
+- name: Copy user_limits.pl
+  copy:
+    src:  ./files/user_limits.pl
+    dest: "{{ scripts_dir }}/user_limits.pl"
+    mode: '0700'
+
+- name: Run user_limits.pl
+  command:
+    cmd:   "perl ./user_limits.pl -s {{ saved_dir }} -u {{ item.key }} {{ item.value.ulimits }}"
+    chdir: "{{ scripts_dir }}"
+  loop:    "{{ lookup('dict', config.users) }}"
+  register: user_limits_out
+  changed_when: user_limits_out.stdout is search('changed')
+  when:
+    - item.value.ulimits is defined and item.value.ulimits | length > 0
+
+- name: Create ssh keys for users
+  shell:
+    cmd: mkdir -p ~{{ item.key}}/.ssh; ssh-keygen -t rsa -f ~{{ item.key }}/.ssh/id_rsa -C "" -N ""; chown -R {{ item.key }}:{{ item.value.pgroup }} ~{{ item.key }}/.ssh; chmod 700 ~{{ item.key }}/.ssh/*
+  args:
+    creates: ~{{ item.key }}/.ssh/id_rsa
+  loop: "{{ lookup('dict', config.users) }}"
+
+- name: Set fact ora_pub_ips
+  set_fact:
+    ora_pub_ips: "{{ ora_pub_ips | default([]) + [ item.ora_pub.split()[2] ] }}"
+  loop: "{{ config.networks }}"
+
+- name: Fail if ora_pub_ips not valid
+  fail:
+    msg: "Failed to set fact ora_pub_ips"
+  when: not ora_pub_ips.0 is defined
+
+- name: Set up ssh passwordless for root and grid user
+  command:
+    cmd:  "perl ./roles/config/files/ssh_passwordless.pl -h \"{{ rac_hosts | trim }}\" -n \"{{ rac_nodes | trim }}\" -u {{ item }} -d \"{{ config.cluster_domain | default('') }}\" -i \"{{ ora_pub_ips | join(' ')}}\" "
+  loop: "{{ [ global.grid_owner | default('', true), global.db_owner | default('', true) ] }}"
+  delegate_to: localhost
+  register: ssh_passwordless_out
+  changed_when: ssh_passwordless_out.stdout is search('changed')
+  when:
+    - inventory_hostname == first_host
+    - item != ""
+
+- name: Copy update_etc_hosts.pl
+  copy:
+    src:  ./files/update_etc_hosts.pl
+    dest: "{{ scripts_dir }}/update_etc_hosts.pl"
+    mode: '0700'
+
+- name: Update /etc/hosts
+  command:
+    cmd: "perl ./update_etc_hosts.pl -s {{ saved_dir + ' ' }}
+         {%- for item in config.etc_hosts | batch(3) | list -%}
+           {{ '\"' + item.0 + ' ' +
+              item.1 + ' ' +
+              item.2 | join(' ') + '\"' + ' '
+           }}
+         {%- endfor -%}"
+    chdir: "{{ scripts_dir }}"
+  register: update_etc_hosts_out
+  changed_when: update_etc_hosts_out.stdout is search('changed')
+
+- name: Run cfgmgr
+  command:
+    cmd: cfgmgr
+
+- name: Copy mktcpip.sh
+  copy:
+    src:  ./files/mktcpip.sh
+    dest: "{{ scripts_dir }}/mktcpip.sh"
+    mode: '0700'
+
+- name: Run mktcpip.sh
+  command:
+    cmd:   "ksh93 ./mktcpip.sh
+             {% if item.pub is defined and item.pub | length > 0 %}
+               {{ '\"' + 'pub ' + item.pub + '\"' + ' ' }}
+             {% endif %}
+             {{ '\"' + 'ora_pub '  + item.ora_pub + '\"' + ' ' + '\"' + 'ora_pvt1 ' + item.ora_pvt1 + '\"' + ' ' + '\"' + 'ora_pvt2 ' + item.ora_pvt2 + '\"' + ' ' }}"
+    chdir: "{{ scripts_dir }}"
+  register: mktcpip_out
+  loop: "{{ config.networks }}"
+  when: item.host == inventory_hostname 
+  changed_when: mktcpip_out.stdout is search('changed')
+
+- name: Copy net_connectivity.pl
+  copy:
+    src: ./files/net_connectivity.pl
+    dest: "{{ scripts_dir }}/net_connectivity.pl"
+    mode: '0700'
+
+- name: Run net_connectivity.pl
+  command:
+    cmd: "perl ./net_connectivity.pl {% for h in config.networks %}
+           {% if h.pub is defined and h.pub | length > 0 %}
+             {{ '\"' + h.host | default([]) + ' ' +
+                h.pub.split()[1:3] | join(' ') + ' ' +
+                h.ora_pub.split()[1:3] | join(' ') + ' ' +
+                h.ora_pvt1.split()[1:3] | join(' ') + ' ' +
+                h.ora_pvt2.split()[1:3] | join(' ') + ' ' | list | join(' ') +
+                '\"'
+             }}
+           {% else %}
+             {{ '\"' +
+                h.host | default([]) + ' ' +
+                h.ora_pub.split()[1:3] | join(' ') + ' ' +
+                h.ora_pvt1.split()[1:3] | join(' ') + ' ' +
+                h.ora_pvt2.split()[1:3] | join(' ') + ' ' | list | join(' ') +
+                '\"'
+             }}
+           {% endif %}
+         {% endfor %}"
+    chdir: "{{ scripts_dir }}"
+  register: net_connectivity_out
+  failed_when: net_connectivity_out.stdout | regex_search('error', ignorecase=True)
+  changed_when: False
+
+- name: Copy uplink_poll.sh
+  copy:
+    src:  ./files/uplink_poll.sh
+    dest: "{{ scripts_dir }}/uplink_poll.sh"
+    mode: '0700'
+
+- name: Set virtual Ethernet uplink poll
+  command:
+    cmd:   "ksh93 ./uplink_poll.sh 
+           {% if item.pub is defined and item.pub | length > 0 %}
+             {{ item.pub.split()[1] }}
+           {% endif %}
+           {{ item.ora_pub.split()[1] + ' ' +
+              item.ora_pvt1.split()[1] + ' ' +
+              item.ora_pvt2.split()[1]
+           }}"
+    chdir: "{{ scripts_dir }}"
+  loop: "{{ config.networks }}"
+  register: uplink_poll_out
+  changed_when: uplink_poll_out.stdout is search('uplink poll changed')
+  when: item.host == inventory_hostname 
+
+- name: Copy add_dshenv.sh
+  copy:
+    src: files/add_dshenv.sh
+    dest: "{{ scripts_dir }}/add_dshenv.sh"
+    mode: '700'
+
+- name: Run add_dshenv.sh
+  command:
+    cmd:   "ksh93 ./add_dshenv.sh -n {{ '\"' +
+              rac_nodes | trim + '\"' + ' ' +
+              config.dsh | map('regex_replace', '(.*)', '\"\\1\"' ) | list | join(' ') }}"
+    chdir: "{{ scripts_dir }}"
+  register: add_dshenv_out
+  when: config.dsh is defined
+  changed_when: add_dshenv_out.stdout is search('changed')
+
+- name: Copy vncpasswd.sh
+  copy:
+    src:  ./files/vncpasswd.sh
+    dest: "{{ scripts_dir }}/vncpasswd.sh"
+    mode: '0700'
+  when:
+    - config.linux.tools | select('search', 'vnc') | list
+    - lookup('pipe', ssh_root_conn + ' rpm -qa | grep vnc', errors='ignore')
+
+
+###########################################################
+# Templates
+###########################################################
+
+- name: Template out vnc_user_env.sh
+  template:
+    src:  templates/vnc_user_env.sh.j2
+    dest: "{{ scripts_dir }}/vnc_user_env.sh"
+    mode: '700'
+  when:
+    - config.linux.tools | select('search', 'vnc') | list
+    - lookup('pipe', ssh_root_conn + ' rpm -qa | grep vnc', errors='ignore')
+
+- name: Run vnc_user_env.sh
+  command:
+    cmd: "ksh93 ./vnc_user_env.sh {{ item.key }} {{ item.value.vnc_password }}
+                                  {{ item.value.pgroup }} {{ item.value.home }}"
+    chdir: "{{ scripts_dir }}"
+  loop:  "{{ lookup('dict', config.users) }}"
+  register: vnc_user_env_out
+  when:
+    - item.key != 'root'
+    - inventory_hostname in config.vnc_hosts
+    - config.linux.tools | select('search', 'vnc') | list
+    - item.value.vnc_password is defined
+    - item.value.vnc_password | length > 0
+    - lookup('pipe', ssh_root_conn + ' rpm -qa | grep vnc', errors='ignore')
+  changed_when: vnc_user_env_out.stdout is search('changed')
+
+- name: Set fact rename_setup_dsks_done
+  set_fact:
+    rename_setup_dsks_done: "{{ lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/rename_setup_dsks_done', errors='ignore') }}"
+
+- name: Set fact shared_asmdisk_nums
+  set_fact:
+    shared_asmdisk_nums: "{%- for dg_entry in config.asmdisks.diskgroups -%}
+                        {%- set nums = dg_entry.3 | trim | regex_replace('\\s+', ' ') -%}
+                        {%- for num in nums.split(' ') -%}
+                          {{ num + ' ' }}
+                        {%- endfor -%}
+                      {%- endfor -%}"
+  failed_when:
+    - not config.asmdisks.diskgroups is defined or not shared_asmdisk_nums is defined
+    - not rename_setup_dsks_done
+
+# Depends on shared_asmdisk_nums
+- name: Template out dsks_uids.sh
+  template:
+    src:  templates/dsks_uids.sh.j2
+    dest: "{{ scripts_dir }}/dsks_uids.sh"
+    mode: '700'
+  when: not rename_setup_dsks_done
+
+- name: Run dsks_uids.sh
+  command:
+    cmd:   "ksh93 ./dsks_uids.sh"
+    chdir: "{{ scripts_dir }}"
+  when: not rename_setup_dsks_done
+  changed_when: False
+
+- name: Clear dsks_xcheck.pl on local
+  command:
+    cmd:  rm -f roles/config/files/dsks_xcheck.pl
+  args:
+    warn: false
+  delegate_to: localhost
+  when:
+    - inventory_hostname == first_host
+    
+- name: Template out dsks_xcheck.pl to local
+  template:
+    src:  templates/dsks_xcheck.pl.j2
+    dest: roles/config/files/dsks_xcheck.pl
+    mode: '700'
+  delegate_to: localhost
+  when:
+    - inventory_hostname == first_host
+
+- name: Run dsks_xcheck.pl on local
+  command:
+    cmd:       "perl ./roles/config/files/dsks_xcheck.pl"
+  delegate_to: localhost
+  failed_when: not first_host is defined
+  when:
+    - inventory_hostname == first_host
+    - not rename_setup_dsks_done
+  changed_when: False
+
+- name: Copy dg_dsks_validity.sh
+  copy:
+    src:  "./files/dg_dsks_validity.sh"
+    dest: "{{ scripts_dir }}/dg_dsks_validity.sh"
+    mode: '0700'
+
+- name: Run dg_dsks_validity.sh
+  command:
+    cmd:   "ksh93 ./dg_dsks_validity.sh 
+              {{ first_host + ' ' +
+                '\"' + item.0 + '\"' + ' ' +
+                '\"' + item.3 + '\"' + ' ' +
+                '\"' + item.5 + '\"' + ' ' +
+                '\"' + item.6 + '\"' 
+              }}"
+    chdir: "{{ scripts_dir }}"
+  loop: "{{ config.asmdisks.diskgroups }}" 
+  register: dg_dsks_validity_out
+  when:
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/rename_setup_dsks_done', errors='ignore')
+    - not lookup('pipe', 'ssh root@' + first_host + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
+  failed_when: dg_dsks_validity_out.stdout | regex_search('error', ignorecase=True)
+  changed_when: dg_dsks_validity_out.stdout is search('changed')
+
+- name: Template out rename_setup_dsks.sh
+  template:
+    src:  ./templates/rename_setup_dsks.sh.j2
+    dest: "{{ scripts_dir }}/rename_setup_dsks.sh"
+    mode: '700'
+
+- name: Run rename_setup_dsks.sh
+  command:
+    cmd: "ksh93 ./rename_setup_dsks.sh 
+         {{ '\"' + item.0 + '\"' + ' ' +
+            '\"' + config.asmdisks.mode + '\"' + ' ' +
+            '\"' + global.grid_owner + ':' + global.grid_pgroup + '\"' + ' ' +
+            '\"' + item.1 + '\"' + ' ' +
+            '\"' + item.3 + '\"' + ' ' +
+            '\"' + item.4 | default([]) | list | join + '\"'
+         }}"
+    chdir: "{{ scripts_dir }}"
+  loop: "{{ config.asmdisks.diskgroups }}"
+  register: rename_setup_dsks_out
+  when: not rename_setup_dsks_done
+  changed_when: rename_setup_dsks_out.stdout is search('changed')
+  failed_when: rename_setup_dsks_out.stdout | regex_search("error", ignorecase=True)
+
+- name: Create rename_setup_dsks_done
+  file:
+    path: "{{ done_dir }}/rename_setup_dsks_done"
+    state: "touch"
+    mode: '755'
+  when:
+    - lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/renamed_disks', errors='ignore') is search('renamed_disks')
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/rename_setup_dsks_done', errors='ignore')
+
+
+###########################################################
+# End of Templates
+###########################################################
+
+- name: Copy vg_dsks_validity.pl
+  copy:
+    src:  ./files/vg_dsks_validity.pl
+    dest: "{{ scripts_dir }}/vg_dsks_validity.pl"
+    mode: '0700'
+  when: config.ora_vg is defined and config.ora_vg.0 is defined
+
+- name: Run vg_dsks_validity.pl
+  command:
+    cmd: "perl ./vg_dsks_validity.pl {{ config.ora_vg.0 }} \"{{ config.ora_vg.3 | join(' ') }}\" \"{{ config.ora_vg.4 | default('') }}\" \"{{ config.ora_vg.5 | default('') }}\""
+    chdir: "{{ scripts_dir }}"
+  register: vg_dsks_validity_out
+  when: config.ora_vg is defined and config.ora_vg.0 is defined
+  changed_when: vg_dsks_validity_out.stdout is search('changed')
+  failed_when: vg_dsks_validity_out.stdout | regex_search('error|fail', ignorecase=True)
+
+- name: Create volume group
+  ibm.power_aix.lvg:
+    vg_name: "{{ config.ora_vg.0 }}"
+    pp_size: "{{ config.ora_vg.1 }}"
+    vg_type: "{{ config.ora_vg.2 }}"
+    pvs:     "{{ config.ora_vg.3 | join(' ') }}"
+    state:   present
+  when:
+    - config.ora_vg is defined and config.ora_vg.0 is defined
+    - not lookup('pipe', ssh_root_conn + ' lsvg | grep ^' + config.ora_vg.0, errors='ignore')
+
+- name: Create Oracle FS
+  ibm.power_aix.filesystem:
+    filesystem: "{{ config.ora_fs.0 }}"
+    attributes: "size={{ config.ora_fs.1 }}"
+    vg:         "{{ config.ora_fs.2 }}"
+    state:      present
+    auto_mount: True
+  when:
+    - not lookup('pipe', ssh_root_conn + ' grep ^' + config.ora_fs.0 + '\:' + ' /etc/filesystems', errors='ignore')
+    - config.ora_vg is defined and config.ora_vg.0 is defined
+
+- name: Configure Oracle FS on rootvg
+  ibm.power_aix.filesystem:
+    filesystem: "{{ config.ora_fs.0 }}"
+    attributes: "size=60G"
+    vg:         "rootvg"
+    state:      present
+    auto_mount: True
+  when:
+    - not config.ora_vg is defined and not config.ora_vg.0 is defined
+    - not lookup('pipe', ssh_root_conn + ' grep ^' + config.ora_fs.0 + '\:' + ' /etc/filesystems', errors='ignore')
+
+- name: Mount Oracle FS
+  ibm.power_aix.mount:
+    mount_dir: "{{ config.ora_fs.0 }}"
+    state:     mount
+  when:
+    - not lookup('pipe', ssh_root_conn + ' mount | grep ' + '\"' + config.ora_fs.0 + ' ' + '\"', errors='ignore')
+
+- name: Change ownership of Oracle filesystem
+  file:
+    path: "{{ config.ora_fs.0 }}"
+    owner: "{{ global.grid_owner }}"
+    group: "{{ global.grid_pgroup }}"
+
+- name: Copy grow_fs.pl
+  copy:
+    src:  ./files/grow_fs.pl
+    dest: "{{ scripts_dir }}/grow_fs.pl"
+    mode: '0700'
+
+- name: Run grow_fs.pl
+  command:
+    cmd:   "perl ./grow_fs.pl --filesystem={{ item.0 }} --free={{ item.1 }}"
+    chdir: "{{ scripts_dir }}"
+  loop:    "{{ config.fs_sizes | batch(2) | list }}"
+  register: grow_fs_out
+  changed_when: grow_fs_out.stdout is search('changed')
+
+- name: Copy add_paging_space.sh
+  copy:
+    src:  ./files/add_paging_space.sh
+    dest: "{{ scripts_dir }}/add_paging_space.sh"
+    mode: '0700'
+
+- name: Run add_paging_space.sh
+  command:
+    cmd:   "ksh93 ./add_paging_space.sh {{ config.paging_space_MB }}"
+    chdir: "{{ scripts_dir }}"
+  register: add_paging_space_out
+  changed_when: add_paging_space_out.stdout is search('changed')
+
+- name: Set fact reboot_required initialization
+  set_fact:
+    reboot_required: False
+
+- name: Copy tunables.sh
+  copy:
+    src:  ./files/tunables.sh
+    dest: "{{ scripts_dir }}/tunables.sh"
+    mode: '0700'
+
+- name: Run tunables.sh
+  command:
+    cmd:   "ksh93 ./tunables.sh"
+    chdir: "{{ scripts_dir }}"
+  register: tunables_out
+  changed_when: tunables_out.stdout is search('changed')
+
+- name: Set reboot_required after tunables.sh
+  set_fact:
+    reboot_required: True
+  when:
+    - reboot_required == False
+    - tunables_out.stdout is search('changed')
+
+- name: Enable IOCP (I/O Completion Port)
+  command: "chdev -l iocp0 -P -a autoconfig=available"
+  when: 
+    - lookup('pipe', ssh_root_conn + ' lsattr -El iocp0', errors='ignore') is search('autoconfig defined STATE')
+
+- name: Set reboot_required after enable IOCP
+  set_fact:
+    reboot_required: True
+  when:
+    - reboot_required == False
+    - lookup('pipe', ssh_root_conn + ' lsattr -El iocp0', errors='ignore') is search('autoconfig available STATE')
+    - lookup('pipe', ssh_root_conn + ' lsdev -Cc iocp', errors='ignore') is search('iocp0 Defined')
+
+- name: Create Berkeley Packet Filter devices
+  shell: "/usr/sbin/tcpdump -D && ls /dev/bpf*"
+  when: not lookup('pipe', ssh_root_conn + ' ls /dev/bpf*',  errors='ignore')
+
+- name: Copy pamconf.sh
+  copy:
+    src:  ./files/pamconf.sh
+    dest: "{{ scripts_dir }}/pamconf.sh"
+    mode: '0700'
+
+- name: Update /etc/pam.conf
+  command:
+    cmd: "ksh93 ./pamconf.sh"
+    chdir: "{{ scripts_dir }}"
+  register: pamconf_out
+  changed_when: pamconf_out.stdout is search('changed')
+
+- name: Copy syslog.sh
+  copy:
+    src:  ./files/syslog.sh
+    dest: "{{ scripts_dir }}/syslog.sh"
+    mode: '0700'
+
+- name: Run syslog.sh
+  command:
+    cmd:   "ksh93 ./syslog.sh"
+    chdir: "{{ scripts_dir }}"
+  register: syslog_out
+  changed_when: syslog_out.stdout is search('changed')
+
+- name: Reboot to activate tunables/settings
+  reboot:
+    test_command: uptime
+  when: reboot_required == True
+
+- name: End of config role
+  debug:
+    msg: "End of config role."
+

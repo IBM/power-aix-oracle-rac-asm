@@ -1,0 +1,16 @@
+---
+
+# inventory.yml
+
+# Note: ansible_ssh_root must be set to 'root'
+
+# Note: hosts must be entered using IP addresses.
+
+racnodes:
+  # !!! update !!!
+  hosts:
+#    W.X.Y.Z:
+#    A.B.C.D:
+  vars:
+    ansible_ssh_user: root
+

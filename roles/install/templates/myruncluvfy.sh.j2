@@ -1,0 +1,56 @@
+# Copyright (c) IBM Corporation 2021
+
+# This script executes runcluvfy.sh in Grid home to verify the nodes
+# meet Oracale RAC install requirements.
+
+# Idempotent: Yes
+
+if [ ! -f ./helper.sh ]
+then
+    echo "$(basename $0): helper.sh not found in $(pwd)"
+    exit 1
+fi
+
+. ./helper.sh
+
+grid_home="{{ config.grid_home | flatten | list | join ('/') }}"
+nodelist="{{ rac_nodes | trim | regex_replace(' ', ',') }}"
+
+  #+ make sure this script is running as this user.
+check_user_is "{{ global.grid_owner }}"
+
+################################################################################
+#                                                                              #
+# Main                                                                         #
+#                                                                              #
+################################################################################
+
+log="{{ done_dir }}/myruncluvfy.out"
+runit=0
+
+if [ -f $log ]; then
+  if grep '...FAILED' $log | egrep -v 'resolv.conf Integrity|NIS name service|User Equivalence'; then
+    # Failed last time
+    runit=1
+  else
+    runit=0
+  fi
+else
+  runit=1
+fi
+
+
+if [ $runit -eq 1 ]; then
+  cd $grid_home
+  ./runcluvfy.sh stage -pre crsinst -n $nodelist -verbose > $log 2>&1
+
+  if grep '...FAILED' $log | egrep -v 'resolv.conf Integrity|NIS name service|User Equivalence'; then
+    RES=-1
+  else
+    RES=0
+  fi
+  error_if_non_zero $RES "runcluvfy_ext.sh changed (failed)"
+  echo "runcluvfy_ext.sh changed (completed successlly)."
+fi
+
+exit 0

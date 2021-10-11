@@ -22,10 +22,10 @@
   ],
   "license_file": null,
   "dependencies": {},
-  "repository": "https://github.com/IBM/ansible-power-aix-oracle-rac-asm",
-  "documentation": "https://github.com/IBM/ansible-power-aix-oracle-rac-asm/tree/main/docs",
+  "repository": "https://github.com/IBM/power-aix-oracle-rac-asm",
+  "documentation": "https://github.com/IBM/power-aix-oracle-rac-asm/tree/main/docs",
   "homepage": "https://github.com/IBM",
-  "issues": "https://github.com/IBM/ansible-power-aix-oracle-rac-asm/issues"
+  "issues": "https://github.com/IBM/power-aix-oracle-rac-asm/issues"
  },
  "file_manifest_file": {
   "name": "FILES.json",

@@ -12,8 +12,8 @@
    "ibm",
    "power",
    "aix",
-   "oracle"
-   "rac"
+   "oracle",
+   "rac",
    "asm"
   ],
   "description": "Ansible content for Installing Oracle 19c RAC on IBM Power Systems running with AIX Operating system",

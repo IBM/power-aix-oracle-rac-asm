@@ -27,9 +27,9 @@ syslog_conf=/etc/syslog.conf
 save_original $syslog_conf
 
 typeset -A facility_priority=(
-  [ualert]="/var/adm/ras/ualert.log rotate size 100k files 10"
-  [uerr]="/var/adm/ras/uerr.log rotate size 100k files 10"
-  [udebug]="/var/adm/ras/udebug.log rotate size 100k files 10"
+  [ualert]="user.alert /var/adm/ras/ualert.log rotate size 100k files 10"
+  [uerr]="user.err /var/adm/ras/uerr.log rotate size 100k files 10"
+  [udebug]="user.udebug /var/adm/ras/udebug.log rotate size 100k files 10"
   )
 
 for fp in ${!facility_priority[@]}; do

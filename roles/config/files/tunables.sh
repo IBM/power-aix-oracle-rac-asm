@@ -1,3 +1,5 @@
+#!/usr/bin/ksh93
+
 # Copyright (c) IBM Corporation 2021
 
 # Idempotent: yes
@@ -35,6 +37,12 @@ set_no() {
   [[ $name == "ipqmaxlen" ]] && option="-r" || option="-p"
   curr_value=$(no -o $name | awk '{print $3}')
   if [ $value -ne $curr_value ]; then
+    if [ $name == "ipqmaxlen" ]; then
+	  aix_level=`/usr/bin/oslevel  | /usr/bin/awk -F '.' ' { print $1 $2 }'`
+	  if [ $aix_level -ge 73 ]; then
+	     option="-Kr"
+      fi
+    fi	  
     runcmd_nz "no $option -o ${name}=$value"
     echo "no $name changed."
     changed=1

@@ -1,3 +1,5 @@
+#!/usr/bin/perl -w
+
 # Copyright (c) IBM Corporation 2021
 
 # This script checks the number of running ASM instances with Flex ASM.

@@ -1,3 +1,5 @@
+#!/usr/bin/perl
+
 # Copyright (c) IBM Corporation 2021
 
 # The script performs 4 checks and takes actions if "clear_pvids"

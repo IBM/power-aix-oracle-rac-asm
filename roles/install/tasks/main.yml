@@ -51,6 +51,9 @@
   file:
     path:  "{{ install.compiler.nfs_mount.0 }}"
     state: directory
+  when:
+    - inventory_hostname in install.compiler.hosts
+    - install.compiler.base_dir is defined
 
 - name: NFS mount compiler
   ibm.power_aix.mount:
@@ -120,7 +123,7 @@
 
 - name: Run verify_xlc.sh
   command: 
-    cmd:   "ksh93 ./verify_xlc.sh {{ done_dir }}"
+    cmd:   "./verify_xlc.sh {{ done_dir }}"
     chdir: "{{ scripts_dir }}"
   when:
     - inventory_hostname in install.compiler.hosts
@@ -145,7 +148,7 @@
 
 - name: Run oslevel_update.sh
   command:
-    cmd:   "ksh93 ./oslevel_update.sh
+    cmd:   "./oslevel_update.sh
            {{ aix_ver_rel_tl }}
            {{ preconfig.lpp_src.nfs_mount.0.0 }}
            {%- set dir=preconfig.lpp_src -%}
@@ -205,12 +208,13 @@
 
 - name: Run prep_grid_install.sh
   command:
-    cmd:   "ksh93 ./prep_grid_install.sh"
+    cmd:   ./prep_grid_install.sh
     chdir: "{{ scripts_dir }}"
   when: inventory_hostname == first_host
   register: prep_grid_install_out
   become: yes
   become_user: "{{ global.grid_owner }}"
+  become_method: su
   changed_when: prep_grid_install_out.stdout is search('changed')
 
 - name: Template out gen_grid_rsp.pl
@@ -222,7 +226,7 @@
 
 - name: Run gen_grid_rsp.pl
   command:
-    cmd:   "perl ./gen_grid_rsp.pl"
+    cmd: "./gen_grid_rsp.pl"
     chdir: "{{ scripts_dir }}"
   when: inventory_hostname == first_host
   register: gen_grid_rsp_out
@@ -237,7 +241,7 @@
 
 - name: Run myruncluvfy.sh
   command:
-    cmd:   "ksh93 ./myruncluvfy.sh"
+    cmd: "./myruncluvfy.sh"
     chdir: "{{ scripts_dir }}"
   register: myruncluvfy_out
   when:
@@ -245,6 +249,7 @@
     - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
   become: yes
   become_user: "{{ global.grid_owner }}"
+  become_method: su
   changed_when: myruncluvfy_out.stdout is search('changed')
 
 - name: Template out run_rootpre.sh
@@ -256,7 +261,7 @@
 
 - name: Run run_rootpre.sh
   command:
-    cmd:   "ksh93 ./run_rootpre.sh"
+    cmd:   ./run_rootpre.sh
     chdir: "{{ scripts_dir }}"
   when: inventory_hostname == first_host
   register: run_rootpre_out
@@ -270,7 +275,7 @@
 
 - name: Run modify_nameserver_entries.sh - comment out entry(ies)
   command:
-    cmd:   "ksh93 ./modify_nameserver_entries.sh \"{{ bootstrap.resolv_conf.nameservers.0 | default('') }}\" comment_out"
+    cmd:   "./modify_nameserver_entries.sh \"{{ bootstrap.resolv_conf.nameservers.0 | default('') }}\" comment_out"
     chdir: "{{ scripts_dir }}"
   register: modify_nameserver_entries_out
   changed_when: modify_nameserver_entries_out.stdout is search('changed')
@@ -285,13 +290,14 @@
 
 - name: Run grid_install.sh
   command:
-    cmd:   "ksh93 ./grid_install.sh"
+    cmd:   ./grid_install.sh
     chdir: "{{ scripts_dir }}"
   when:
     - inventory_hostname == first_host
     - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
   become: yes
   become_user: "{{ global.grid_owner }}"
+  become_method: su
   register: grid_install_out
   changed_when: grid_install_out.stdout is search('changed')
 
@@ -333,12 +339,12 @@
 
 - name: Run create_asm_diskgroup.sh
   command:
-    cmd: "ksh93 ./create_asm_diskgroup.sh {{ item.0 }} {{ item.2 }}
-                {{ global.grid_owner }} {{ config.grid_home | flatten | list | join('/') }} \"{{ item.1 }}\" \"{{ item.3 }}\" \"{{ item.4 }}\""
+    cmd: "./create_asm_diskgroup.sh {{ item.0 }} {{ item.2 }} {{ global.grid_owner }} {{ config.grid_home | flatten | list | join('/') }} \"{{ item.1 }}\" \"{{ item.3 }}\" \"{{ item.4 }}\""
     chdir: "{{ scripts_dir }}"
   loop: "{{ config.asmdisks.diskgroups }}"
   become: yes
   become_user: "{{ global.grid_owner }}"
+  become_method: su
   register: create_asm_diskgroup_out
   when:
     - inventory_hostname == first_host
@@ -358,11 +364,12 @@
 
 - name: Run create_acfs.sh
   command:
-    cmd: "ksh93 ./create_acfs.sh"
+    cmd: "./create_acfs.sh"
     chdir: "{{ scripts_dir }}"
   register: create_acfs_out
   become: yes
   become_user: "{{ global.grid_owner }}"
+  become_method: su
   when: inventory_hostname == first_host
   changed_when: create_acfs_out.stdout is search('changed')
   failed_when: create_acfs_out.stdout | regex_search('error|failed', ignorecase=True)
@@ -392,13 +399,12 @@
 
 - name: Run verify_acfs_mounted.sh
   command:
-    cmd: "ksh93 ./verify_acfs_mounted.sh
-          {{ config.grid_home | flatten | list | join('/') }}
-          {{ config.fs.acfs | flatten | list | join('/') }} {{ num_nodes }}"
+    cmd: "./verify_acfs_mounted.sh {{ config.grid_home | flatten | list | join('/') }} {{ config.fs.acfs | flatten | list | join('/') }} {{ num_nodes }}"
     chdir: "{{ scripts_dir }}"
   register: run_verify_acfs_mounted_out
   become: yes
   become_user: "{{ global.grid_owner }}"
+  become_method: su
   when: inventory_hostname == first_host
   failed_when: run_verify_acfs_mounted_out.stdout is search('ERROR')
   changed_when: False
@@ -412,10 +418,11 @@
 
 - name: Run prep_db_install.sh
   command:
-    cmd:  "ksh93 ./prep_db_install.sh"
+    cmd:  "./prep_db_install.sh"
     chdir: "{{ scripts_dir }}"
   become: yes
   become_user: "{{ global.db_owner }}"
+  become_method: su
   register: prep_db_install_out
   when: inventory_hostname == first_host
   changed_when: prep_db_install_out.stdout is search('changed')
@@ -430,7 +437,7 @@
 
 - name: Run gen_db_rsp.pl
   command:
-    cmd:   "perl ./gen_db_rsp.pl"
+    cmd:   "./gen_db_rsp.pl"
     chdir: "{{ scripts_dir }}"
   register: gen_db_rsp_out
   when: inventory_hostname == first_host
@@ -446,19 +453,20 @@
   
 - name: Run db_install.sh
   command:
-    cmd:   "ksh93 ./db_install.sh"
+    cmd:   "./db_install.sh"
     chdir: "{{ scripts_dir }}"
+  when: 
+    - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/db_install_done', errors='ignore')
   become: yes
   become_user: "{{ global.db_owner }}"
+  become_method: su
   register: db_install_out
-  when: inventory_hostname == first_host
-  changed_when: db_install_out.stdout is search('changed')
-  failed_when:  db_install_out.stdout | regex_search('error|fail', ignorecase=True)
+  changed_when: db_install_out.stdout is search('changed') or db_install_out.stdout is search('Successfully Setup Software')
 
 - name: Run modify_nameserver_entries.sh - uncomment out entry(ies)
   command:
-    cmd:   "ksh93 ./modify_nameserver_entries.sh
-          {{ bootstrap.resolv_conf.nameservers.0 | default('') }} uncomment_out"
+    cmd:   "./modify_nameserver_entries.sh {{ bootstrap.resolv_conf.nameservers.0 | default('') }} uncomment_out"
     chdir: "{{ scripts_dir }}"
   register: modify_nameserver_entries_out
   changed_when: modify_nameserver_entries_out.stdout is search('changed')

@@ -1,3 +1,5 @@
+#!/usr/bin/ksh93
+
 # Copyright (c) IBM Corporation 2021
 
 # This script adds websm_rlogin and websm_su entries to /etc/pam.conf.

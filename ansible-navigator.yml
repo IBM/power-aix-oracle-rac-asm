@@ -1,0 +1,9 @@
+---
+ansible-navigator:
+   execution-environment:
+      container-engine: podman
+      enabled: True
+      environment-variables:
+         set:
+            ANSIBLE_CONFIG: ansible.cfg
+      image: oracle_rac_aix_ee:latest

@@ -1,3 +1,5 @@
+#!/usr/bin/ksh93
+
 # Copyright (c) IBM Corporation 2021
 
 # Disable NTP service now and on boot and stop the xntp service.

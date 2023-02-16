@@ -1,3 +1,5 @@
+#!/usr/bin/ksh93
+
 # Copyright (c) IBM Corporation 2021
 
 if [ ! -f ./helper.sh ]

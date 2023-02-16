@@ -1,0 +1,8 @@
+---
+# CHECK for dnf on inventory host
+- import_role:
+    name: ibm.power_aix.power_aix_bootstrap
+  vars:
+    pkgtype: "dnf"
+    download_dir: "~"
+    target_dir: "/tmp/.ansible.cpdir"

@@ -1,3 +1,5 @@
+#!/usr/bin/ksh93
+
 # Copyright (c) IBM Corporation 2021
 
 # This script adds 3 syslog facilities to /etc/syslog.conf, they are
@@ -27,8 +29,8 @@ syslog_conf=/etc/syslog.conf
 save_original $syslog_conf
 
 typeset -A facility_priority=(
-  [ualert]="user.alert /var/adm/ras/ualert.log rotate size 100k files 10"
-  [uerr]="user.err /var/adm/ras/uerr.log rotate size 100k files 10"
+  [ualert]="user.ualert /var/adm/ras/ualert.log rotate size 100k files 10"
+  [uerr]="user.uerr /var/adm/ras/uerr.log rotate size 100k files 10"
   [udebug]="user.udebug /var/adm/ras/udebug.log rotate size 100k files 10"
   )
 

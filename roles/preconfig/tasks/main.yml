@@ -21,7 +21,7 @@
 
 - name: Copy oslevel_check_aix7.pl
   copy:
-    src:  roles/preconfig/files/oslevel_check_aix7.pl
+    src: roles/preconfig/files/oslevel_check_aix7.pl
     dest: "{{ scripts_dir }}/oslevel_check_aix7.pl"
     mode: 0700
 
@@ -67,7 +67,7 @@
 
 - name: Add AIX timeserver and run setclock
   command:
-     cmd:   "ksh93 ./aix_timeserver.sh {{ preconfig.aix_timeserver }}"
+     cmd: "./aix_timeserver.sh {{ preconfig.aix_timeserver }}"
      chdir: "{{ scripts_dir }}"
   when: preconfig.aix_timeserver is defined and preconfig.aix_timeserver | length > 0
   register: aix_timeserver_out
@@ -75,16 +75,17 @@
 
 - name: Copy configure_ntp.sh
   copy:
-    src:  roles/preconfig/files/configure_ntp.sh
+    src: roles/preconfig/files/configure_ntp.sh
     dest: "{{ scripts_dir }}/configure_ntp.sh"
     mode: 0700
   when: preconfig.ntp.state == 'present'
 
 - name: Configure NTP
   command:
-    cmd:   "ksh93 ./configure_ntp.sh {{ preconfig.ntp.ntp_servers | join(' ') +
-                                       ' broadcastclient:' +
-                                       preconfig.ntp.broadcastclient }}"
+    cmd:   "./configure_ntp.sh {{ preconfig.ntp.ntp_servers | join(' ') +
+                                  ' broadcastclient:' +
+                                  preconfig.ntp.broadcastclient
+                                }}"
     chdir: "{{ scripts_dir }}"
   register: configure_ntp_out
   when:
@@ -101,7 +102,7 @@
 
 - name: Disable NTP service upon reboot and stop the xntp service
   command:
-    cmd:   "ksh93 ./disable_ntp.sh {{ saved_dir }}"
+    cmd:   "./disable_ntp.sh {{ saved_dir }}"
     chdir: "{{ scripts_dir }}"
   register: disable_ntp_out
   when: preconfig.ntp.state == 'absent'

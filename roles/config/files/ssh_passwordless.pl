@@ -1,3 +1,5 @@
+#!/usr/bin/perl
+
 # Copyright (c) IBM Corporation 2021
 
 # This script runs on Ansible controller which creates/updates known_hosts
@@ -93,6 +95,26 @@ sub get_src_keys {
   }
 
   for $h (@hosts) {
+     # In Power/VS, this file is missing, so generate it
+     if ("$key_file" eq "/etc/ssh/ssh_host_ecdsa_key.pub") {
+       $status = `ssh root\@$h "[[ -f $key_file ]] && echo "Exists" || echo "not found""`; chomp $status;
+       if ($status =~ "not found") {
+         `ssh root\@$h '/usr/bin/ssh-keyscan -H $h 2>/dev/null | \
+                       grep ssh-rsa | \
+                       awk \"{ print \\\$2, \\\$3 }\" > /etc/ssh/ssh_host_ecdsa_key.pub'`;
+       }
+       if ( -z "$key_file" ) {
+	  `ssh root\@$h '/usr/bin/ssh-keyscan -H $h 2>/dev/null | \
+                       grep ssh-rsa | \
+                       awk \"{ print \\\$2, \\\$3 }\" > /etc/ssh/ssh_host_ecdsa_key.pub'`;
+       }
+       if ( -z "$key_file" ) {
+	  print "ERROR: Failed to create file  $key_file on $h : size of file is zero \n";
+	  print "Delete the file $key_file and rerun the config role \n";
+	  exit 1;
+       }
+     }
+
     $key = `ssh root\@$h cat $key_file`;
     chomp $key;
     if ($key =~ /cannot open/) {

@@ -1,3 +1,5 @@
+#!/usr/bin/perl
+
 # Copyright (c) IBM Corporation 2021
 
 # This script adds entries in /etc/hosts as specified in config.etc_hosts.

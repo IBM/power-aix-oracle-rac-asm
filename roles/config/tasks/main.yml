@@ -13,19 +13,58 @@
   when: not config.fs.ofa_fs is defined or config.fs.ofa_fs | length == 0
 
 - name: Expand /opt target directory to 750M
-  aix_filesystem:
+  ibm.power_aix.filesystem:
     filesystem: /opt
-    size:       750M
     state:      present
+    attributes: size=+750M
   when: lookup('pipe', ssh_root_conn + ' df -m /opt | awk ' + '\'' + '$0 !~ /Filesystem/ {printf "%d", $2}' + '\'', errors='ignore') < '750'
+
+- name: Copy grow_fs.pl
+  copy:
+    src:  ./files/grow_fs.pl
+    dest: "{{ scripts_dir }}/grow_fs.pl"
+    mode: '0700'
+
+- name: Run grow_fs.pl
+  command:
+    cmd:   "perl ./grow_fs.pl --filesystem={{ item.0 }} --free={{ item.1 }}"
+    chdir: "{{ scripts_dir }}"
+  loop:    "{{ config.fs_sizes | batch(2) | list }}"
+  register: grow_fs_out
+  changed_when: grow_fs_out.stdout is search('changed')
+
+- name: Verify the host OS level
+  raw: "/usr/bin/oslevel  | /usr/bin/awk -F '.' ' { print $1 $2 }'"
+  register: os_level
+  changed_when: false
+- name: Set a aix73 flag
+  set_fact:
+     aix73: false
+- name: Set a aix73 flag
+  set_fact:
+     aix73: true
+  when: (os_level.stdout_lines[0] | int) >= 73
 
 - name: Install Linux tools
   yum:
     name: "{{ config.linux.tools + config.linux.optional_tools | default([]) }}"
     state: present
   register: linux_tools_out
+  when: not aix73
   failed_when:
     - (config.linux.tools is not defined) or (linux_tools_out.rc != 0)
+
+- name: Install Linux tools on AIX73
+  dnf:
+    name: "{{ config.linux.tools + config.linux.optional_tools | default([]) }}"
+    state: latest
+  environment:
+    PATH: "/usr/bin:/usr/sbin/:/opt/freeware/bin"
+  register: linux_tools_out
+  when: aix73
+  failed_when:
+    - (config.linux.tools is not defined) or (linux_tools_out.rc != 0)
+
 
 - name: Set up groups for Grid and Database owners
   command: "mkgroup -A id={{ item.1 }} {{ item.0 }}"
@@ -60,7 +99,7 @@
 
 - name: Run add_bash_logincfg.sh
   command:
-    cmd:   "ksh93 ./add_bash_logincfg.sh"
+    cmd:  "./add_bash_logincfg.sh"
     chdir: "{{ scripts_dir }}"
   register: add_bash_logincfg_out
   when:
@@ -157,7 +196,7 @@
 
 - name: Update /etc/hosts
   command:
-    cmd: "perl ./update_etc_hosts.pl -s {{ saved_dir + ' ' }}
+    cmd: "./update_etc_hosts.pl -s {{ saved_dir + ' ' }}
          {%- for item in config.etc_hosts | batch(3) | list -%}
            {{ '\"' + item.0 + ' ' +
               item.1 + ' ' +
@@ -180,11 +219,11 @@
 
 - name: Run mktcpip.sh
   command:
-    cmd:   "ksh93 ./mktcpip.sh
-             {% if item.pub is defined and item.pub | length > 0 %}
-               {{ '\"' + 'pub ' + item.pub + '\"' + ' ' }}
-             {% endif %}
-             {{ '\"' + 'ora_pub '  + item.ora_pub + '\"' + ' ' + '\"' + 'ora_pvt1 ' + item.ora_pvt1 + '\"' + ' ' + '\"' + 'ora_pvt2 ' + item.ora_pvt2 + '\"' + ' ' }}"
+    cmd: "./mktcpip.sh
+           {% if item.pub is defined and item.pub | length > 0 %}
+             {{ '\"' + 'pub ' + item.pub + '\"' + ' ' }}
+           {% endif %}
+           {{ '\"' + 'ora_pub '  + item.ora_pub + '\"' + ' ' + '\"' + 'ora_pvt1 ' + item.ora_pvt1 + '\"' + ' ' + '\"' + 'ora_pvt2 ' + item.ora_pvt2 + '\"' + ' ' }}"
     chdir: "{{ scripts_dir }}"
   register: mktcpip_out
   loop: "{{ config.networks }}"
@@ -199,7 +238,7 @@
 
 - name: Run net_connectivity.pl
   command:
-    cmd: "perl ./net_connectivity.pl {% for h in config.networks %}
+    cmd: "./net_connectivity.pl {% for h in config.networks %}
            {% if h.pub is defined and h.pub | length > 0 %}
              {{ '\"' + h.host | default([]) + ' ' +
                 h.pub.split()[1:3] | join(' ') + ' ' +
@@ -231,7 +270,7 @@
 
 - name: Set virtual Ethernet uplink poll
   command:
-    cmd:   "ksh93 ./uplink_poll.sh 
+    cmd:   "./uplink_poll.sh 
            {% if item.pub is defined and item.pub | length > 0 %}
              {{ item.pub.split()[1] }}
            {% endif %}
@@ -253,7 +292,7 @@
 
 - name: Run add_dshenv.sh
   command:
-    cmd:   "ksh93 ./add_dshenv.sh -n {{ '\"' +
+    cmd:   "./add_dshenv.sh -n {{ '\"' +
               rac_nodes | trim + '\"' + ' ' +
               config.dsh | map('regex_replace', '(.*)', '\"\\1\"' ) | list | join(' ') }}"
     chdir: "{{ scripts_dir }}"
@@ -286,15 +325,15 @@
 
 - name: Run vnc_user_env.sh
   command:
-    cmd: "ksh93 ./vnc_user_env.sh {{ item.key }} {{ item.value.vnc_password }}
-                                  {{ item.value.pgroup }} {{ item.value.home }}"
+    cmd: "./vnc_user_env.sh {{ item.key }} {{ item.value.vnc_password }}
+                            {{ item.value.pgroup }} {{ item.value.home }}"
     chdir: "{{ scripts_dir }}"
   loop:  "{{ lookup('dict', config.users) }}"
   register: vnc_user_env_out
   when:
+    - config.linux.tools | select('search', 'vnc') | list
     - item.key != 'root'
     - inventory_hostname in config.vnc_hosts
-    - config.linux.tools | select('search', 'vnc') | list
     - item.value.vnc_password is defined
     - item.value.vnc_password | length > 0
     - lookup('pipe', ssh_root_conn + ' rpm -qa | grep vnc', errors='ignore')
@@ -326,7 +365,7 @@
 
 - name: Run dsks_uids.sh
   command:
-    cmd:   "ksh93 ./dsks_uids.sh"
+    cmd:   ./dsks_uids.sh
     chdir: "{{ scripts_dir }}"
   when: not rename_setup_dsks_done
   changed_when: False
@@ -351,7 +390,7 @@
 
 - name: Run dsks_xcheck.pl on local
   command:
-    cmd:       "perl ./roles/config/files/dsks_xcheck.pl"
+    cmd:   perl ./roles/config/files/dsks_xcheck.pl
   delegate_to: localhost
   failed_when: not first_host is defined
   when:
@@ -367,13 +406,13 @@
 
 - name: Run dg_dsks_validity.sh
   command:
-    cmd:   "ksh93 ./dg_dsks_validity.sh 
-              {{ first_host + ' ' +
-                '\"' + item.0 + '\"' + ' ' +
-                '\"' + item.3 + '\"' + ' ' +
-                '\"' + item.5 + '\"' + ' ' +
-                '\"' + item.6 + '\"' 
-              }}"
+    cmd:  "./dg_dsks_validity.sh 
+            {{ first_host + ' ' +
+               '\"' + item.0 + '\"' + ' ' +
+               '\"' + item.3 + '\"' + ' ' +
+               '\"' + item.5 + '\"' + ' ' +
+               '\"' + item.6 + '\"' 
+            }}"
     chdir: "{{ scripts_dir }}"
   loop: "{{ config.asmdisks.diskgroups }}" 
   register: dg_dsks_validity_out
@@ -391,7 +430,7 @@
 
 - name: Run rename_setup_dsks.sh
   command:
-    cmd: "ksh93 ./rename_setup_dsks.sh 
+    cmd: "./rename_setup_dsks.sh 
          {{ '\"' + item.0 + '\"' + ' ' +
             '\"' + config.asmdisks.mode + '\"' + ' ' +
             '\"' + global.grid_owner + ':' + global.grid_pgroup + '\"' + ' ' +
@@ -482,20 +521,6 @@
     owner: "{{ global.grid_owner }}"
     group: "{{ global.grid_pgroup }}"
 
-- name: Copy grow_fs.pl
-  copy:
-    src:  ./files/grow_fs.pl
-    dest: "{{ scripts_dir }}/grow_fs.pl"
-    mode: '0700'
-
-- name: Run grow_fs.pl
-  command:
-    cmd:   "perl ./grow_fs.pl --filesystem={{ item.0 }} --free={{ item.1 }}"
-    chdir: "{{ scripts_dir }}"
-  loop:    "{{ config.fs_sizes | batch(2) | list }}"
-  register: grow_fs_out
-  changed_when: grow_fs_out.stdout is search('changed')
-
 - name: Copy add_paging_space.sh
   copy:
     src:  ./files/add_paging_space.sh
@@ -504,7 +529,7 @@
 
 - name: Run add_paging_space.sh
   command:
-    cmd:   "ksh93 ./add_paging_space.sh {{ config.paging_space_MB }}"
+    cmd:   "./add_paging_space.sh {{ config.paging_space_MB }}"
     chdir: "{{ scripts_dir }}"
   register: add_paging_space_out
   changed_when: add_paging_space_out.stdout is search('changed')
@@ -521,7 +546,7 @@
 
 - name: Run tunables.sh
   command:
-    cmd:   "ksh93 ./tunables.sh"
+    cmd:   "./tunables.sh"
     chdir: "{{ scripts_dir }}"
   register: tunables_out
   changed_when: tunables_out.stdout is search('changed')
@@ -558,7 +583,7 @@
 
 - name: Update /etc/pam.conf
   command:
-    cmd: "ksh93 ./pamconf.sh"
+    cmd: "./pamconf.sh"
     chdir: "{{ scripts_dir }}"
   register: pamconf_out
   changed_when: pamconf_out.stdout is search('changed')
@@ -571,7 +596,7 @@
 
 - name: Run syslog.sh
   command:
-    cmd:   "ksh93 ./syslog.sh"
+    cmd:   "./syslog.sh"
     chdir: "{{ scripts_dir }}"
   register: syslog_out
   changed_when: syslog_out.stdout is search('changed')

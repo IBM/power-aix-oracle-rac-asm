@@ -1,3 +1,5 @@
+#!/usr/bin/perl
+
 # Copyright (c) IBM Corporation 2021
 
 # This script checks for minimum CPUs(cores) and memory.

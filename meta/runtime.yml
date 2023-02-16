@@ -1,4 +1,5 @@
 ---
+requires_ansible: '>=2.9.10'
 galaxy_info:
   author: Tommy Tse
   description: Playbooks and roles that can be used to install Oracle 19c RAC version on New AIX Systems.

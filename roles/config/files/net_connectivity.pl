@@ -1,3 +1,5 @@
+#!/usr/bin/perl
+
 # Copyright (c) IBM Corporation 2021
 
 # Usage: netconn.pl <network_spec> <network_spec> ...

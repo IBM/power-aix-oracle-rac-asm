@@ -1,3 +1,5 @@
+#!/usr/bin/ksh93
+
 # Copyright (c) IBM Corporation 2021
 
 # This script sets the Virtual I/O Ethernet Adapter uplink poll flag.

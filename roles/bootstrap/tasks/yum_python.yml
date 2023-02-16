@@ -1,0 +1,14 @@
+---
+# CHECK for Yum on inventory host
+- import_role:
+    name: ibm.power_aix.power_aix_bootstrap
+  vars:
+    pkgtype: "yum"
+    download_dir: "~"
+    target_dir: "/tmp/.ansible.cpdir"
+
+# INSTALL / UPDATE Python on inventory host
+- import_role:
+    name: ibm.power_aix.power_aix_bootstrap
+  vars:
+    pkgtype: "python"

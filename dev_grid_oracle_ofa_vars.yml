@@ -14,11 +14,12 @@ global:
 ###############################################################################
 
   # !!! update !!!
-  root_password: "XXx4xxxxxxx"
+  root_password: "PW4oracleteam19"
+#  root_password: "abc123"
   grid_owner:  &grid_owner  "grid"
   grid_pgroup: &grid_pgroup "oinstall"
-  db_owner:    &db_owner    "oracle"
-  db_pgroup:   &db_pgroup   "oinstall"
+  db_owner:    &db_owner "oracle"
+  db_pgroup:   &db_pgroup "oinstall"
   # db_pgroup is the primary group for database user, it should match
   # config.grid_rsp.install.asm.OSASM
   # grid_pgroup is the primary group for grid user
@@ -50,9 +51,11 @@ bootstrap:
     # more than one nameservers. After gridSetup.sh/runInstaller complete,
     # the commented out entries will be restored.
     # !!! update !!!
-    nameservers: [ "172.40.10.141", "9.9.9.9" ]
+    nameservers: [ "192.168.64.1", "129.40.106.1" ]
+#    nameservers: [ "9.3.1.200" ]
     # !!! update !!!
-    search:   "ppc power-iaas.cloud.ibm.com"
+#    search:   "isst.aus.stglabs.ibm.com"
+    search:   "ppc pbm.ihost.com ihost.com"
 
 ###############################################################################
 preconfig:    
@@ -64,19 +67,19 @@ preconfig:
   # !!! update !!!
   tz: "America/Los_Angeles"
 
-  # Configure NTP and aix_timeserver are mutually exclusive.
-
   # Add AIX network timeserver to /etc/hosts and run setclock.
   # To disable the AIX network timeserver, set the value to ""
   # !!! update !!!
   # aix_timeserver: "129.40.76.1"
   aix_timeserver: ""
 
+  # Configure NTP and aix_timeserver are mutually exclusive.
+
   # The NTP settings here are meant to provide basic client/server mode support.
   # Valid values for state are "present" and "absent". If the environment does
   # not use NTP then Oracle will use Cluster Time Synchronization Service to
   # provide synchronization service in the cluster. If the state is "absent",
-  # the AIX xnptd service will be stopped and autostart disabled. If the state is
+  # the xnptd service will be stopped and autostart disabled. If the state is
   # "present", the time servers in the "ntp_server" will be added to
   # /etc/ntp.conf. Note that the servers in the "ntp_servers" are the
   # DESIRED servers in the configuration. Pre-existing servers that are not in
@@ -89,7 +92,7 @@ preconfig:
   # is "present".
   ntp:
     # !!! update !!!
-    state: absent 
+    state: present
     ntp_servers: 
       - '0.pool.ntp.org prefer'
       - '1.pool.ntp.org'
@@ -110,13 +113,14 @@ preconfig:
       # !!! update !!!
       # local_mnt   nfs_export                      nfs_server_host aix_ver_rel_tl
       # ---------   ----------                      -----------    -----------
-      ['/lppsource', '/usr/sys/inst.images', '172.40.10.141', '7.3.1' ]
+      ['/lppsource', '/nim/AIX72TL4_gold/lppsource', '129.40.78.250', '7.2.4' ],
+      ['/lppsource', '/nim/AIX72TL5_gold/lppsource', '129.40.78.250', '7.2.5' ]
     ]
 
     # !!! update !!!
     subdir: 'installp/ppc'
 
-  # AIX required fileset
+  # Kernel required fileset
   aix_filesets: [
     'bos.adt.base',
     'bos.adt.lib',
@@ -128,8 +132,6 @@ preconfig:
     'bos.rte.security',
     'bos.rte.bind_cmds',
     'bos.compat.libs',
-    'bos.net.tcp.bind',
-    'bos.net.tcp.bind_utils',
     'xlC.aix61.rte',
     'xlC.rte',
     'rsct.basic.rte',
@@ -146,8 +148,8 @@ preconfig:
   # Your environment's desired minimum requirements
   # No check will be performed if the value is 0
   # !!! update !!!
-  min_cores: 2 
-  min_memory: 16  # in GB
+  min_cores: 4
+  min_memory: 32  # in GB
 
 
 ###############################################################################
@@ -173,7 +175,6 @@ config:
     # Only one VG is supported, though it's a list.
     # "clear_pvids" and "zero_disks" are optional. They must be entered
     # in straight order. If an option is not needed, enter it as ''.
-    # Don't miss out the commas separator!
     # NOTE: pp_size must a power of 2 and between 1 and 1024.
     #
     # vg_name   pp_size(MB) vg_type    hdisks[,,]    options
@@ -182,26 +183,25 @@ config:
     #dummyvg,    '64',      'big',     ['hdisk10', 'hdisk11'], 'clear_pvids', 'zero_disks'
 #    *oravg,     '256',      "big",     ['hdisk1', 'hdisk2'], 'clear_pvids', 'zero_disks'
 #    *oravg,     '256',      "big",     ['hdisk1', 'hdisk2'], '', 'zero_disks'
-    *oravg,     '256',      "big",     ['hdisk2'], 'clear_pvids',  'zero_disks'
+    *oravg,     '256',      "big",     ['hdisk1', 'hdisk2'], 'clear_pvids',  'zero_disks'
   ]
 
   fs:
     # !!! update !!!
-    # The filesystem mount point under which Oracle Grid HOME directory
-    # will be created. This is a string type.
+    # The filesystem in which Oracle Grid HOME directory will be created
+    # This is a string type.
     ofa_fs: &ofa_fs "/u01/app"
-    # The directory ACFS will be mounted on (mount point directory)
+    # The directory ACFS will be mounted on
     # This is a list type.
     acfs:   &acfs   [ *ofa_fs, *db_owner ]
 
   # !!! update !!!
   ora_fs: [
-    # Make sure the size is within the combined capacity of the disks
-    # that make up the volume group.
     # mountpoint   size    volgroup
     # ----------   ----    --------
     # "dummyfs'    "50G",  'dummyvg'
-    *ofa_fs,       "90G",  *oravg,
+    *ofa_fs,       "180G",  *oravg,
+#    /ora",        "120G",  *oravg,
   ]
 
   # The following vars are of list type.
@@ -211,20 +211,20 @@ config:
   db_home:   &db_home   [ *acfs, "db" ]
 
   # Set paging space size - the final size, round up to rootvg's partition size.
-  # Space is allocated from rootvg.
+  # space is allocated from rootvg.
   # AIX install has 512MB configured by default. Set to 0 to leave the size as
   # is. NOTE: Oracle Grid requires >= 16GB to install.
-  paging_space_MB: 16384 
+  paging_space_MB: 16384
   
   # Set the FREE SPACE of the filesystems.
   # NOTE: Oracle Grid and database install require >= 5GB /tmp free space.
   fs_sizes: [
     #mount     Free Space(valid units abbreviations: G, M, K)
     #-----     ----------------------------------------------
-    "/",       "1G",
-    "/usr",    "2G",
+    "/",       "2G",
+    "/usr",    "3G",
     "/var",    "1G",
-    "/tmp",    "8G",
+    "/tmp",    "7G",
     "/admin",  "1G",
     "/opt",    "3G",
     "/home",   "512M",
@@ -241,7 +241,7 @@ config:
      # Keep "tools" list as is. For additional RPM, use the "optional_tools"
      # variable.
      tools: [
-        'unzip', 'expect', 'bash'
+        'unzip', 'make', 'tar', 'expect', 'sudo', 'tightvnc-server', 'bash'
      ]
      # !!! update !!!
      optional_tools: [
@@ -261,10 +261,6 @@ config:
   db_groups: *grid_groups
 
   # User attributes
-  # Make sure the pgroup is in either config.grid_groups or config.db_groups.
-  # For grid and db users, they should be consistent with global.grid_pgroup
-  # and global.db_pgroup respectively.
-
   users:
     root:
       uid:          "0"
@@ -274,10 +270,10 @@ config:
       groups:       "bin,sys,security,cron,audit,lp"
       shell:        "/usr/bin/ksh"
       capabilities: "CAP_BYPASS_RAC_VMM,CAP_PROPAGATE,CAP_NUMA_ATTACH"
-      # root password won't be changed
-      password:       "XXx9xxxxxxxxx"
+      # root password won't be change
+      password:       "NOCHANGE"
       # VNC truncates password to 8 chars
-      #vnc_passwd:   "vncpass"
+      vnc_passwd:   "vncpass"
       # Oracle Doc ID 1587357.1 recommendation
       # nofile>1024, nofiles_hard>65536, stack>10240Kb,
       # stack_hard>10240KB<32768KB, fsize=-1, cpu=-1, data=-1, rss=-1
@@ -297,7 +293,7 @@ config:
       password:       "grid"
       # VNC truncates password to 8 chars
       # !!! update !!!
-    #  vnc_password:   "oracle"
+      vnc_password:   "oracle"
       ulimits: >-
                fsize=-1 data=-1 stack=-1 rss=-1 core=-1 cpu=-1 nofiles=65536
 
@@ -314,12 +310,12 @@ config:
       password:       "oracle"
       # VNC truncates password to 8 chars
       # !!! update !!!
-    #  vnc_password:   "oracle"
+      vnc_password:   "oracle"
       ulimits: >-
                fsize=-1 data=-1 stack=-1 rss=-1 core=-1 cpu=-1 nofiles=65536
 
   # !!! update !!!
-  cluster_domain: 
+  cluster_domain: ppc
 
   # !!! update !!!
   networks:
@@ -334,38 +330,35 @@ config:
 
       #name     hostname     intf IP address    netmask         gateway_address
       #-----    ------------ ---- -----------   --------------  --------------
-      # Example of 3-network, 2-node config
-#    - host: "X.Y.Z.229"
-#      ora_pub:  "ora1        en2 X.Y.Z.229     255.255.255.0    X.Y.Z.1"
-#      ora_pvt1: "ora1-1      en3 10.10.10.1    255.255.255.0"
-#      ora_pvt2: "ora1-2      en4 10.10.20.1    255.255.255.0"
-#    - host: "X.Y.Z.230"
-#      ora_pub:  "ora2        en2 X.Y.Z.230     255.255.255.0    X.Y.Z.1"
-#      ora_pvt1: "ora2-1      en3 10.10.10.2    255.255.255.0"
-#      ora_pvt2: "ora2-2      en4 10.10.20.2    255.255.255.0"
+#    - host: "9.3.49.229"
+#      ora_pub:  "orac3       en2 9.3.49.229    255.255.255.0    9.3.49.1"
+#      ora_pvt1: "orac3-1     en3 10.10.10.1    255.255.255.0"
+#      ora_pvt2: "orac3-2     en4 10.10.20.1    255.255.255.0"
+#    - host: "9.3.49.234"
+#      ora_pub:  "orac5       en2 9.3.49.234   255.255.255.0    9.3.49.1"
+#      ora_pvt1: "orac5-1     en3 10.10.10.2    255.255.255.0"
+#      ora_pvt2: "orac5-2     en4 10.10.20.2    255.255.255.0"
 
-      # Example of 4-network, 2-node config
-#    - host: "X.Y.Z.93"
-#      pub:      "p224n93     en0 X.Y.Z.93      255.255.255.0    X.Y.Z.1"
-#      ora_pub:  "rac91       en1 192.168.64.91 255.255.252.0"
-#      ora_pvt1: "rac91-1     en2 10.10.10.93   255.255.255.0"
-#      ora_pvt2: "rac91-2     en3 10.10.20.93   255.255.255.0"
-#    - host: "X.Y.Z.94"
-#      pub:      "p224n94     en0 X.Y.Z.94      255.255.255.0    X.Y.Z.1"
-#      ora_pub:  "rac92       en1 192.168.64.92 255.255.252.0"
-#      ora_pvt1: "rac92-1     en2 10.10.10.94   255.255.255.0"
-#      ora_pvt2: "rac92-2     en3 10.10.20.94   255.255.255.0"
-
-     - host: "oravm-1"
-       ora_pub:  "oravm-1       en1 172.40.10.76 255.255.255.0"
-       ora_pvt1: "orac1-priv1   en2 10.80.10.12  255.255.255.240"
-       ora_pvt2: "orac1-priv2   en3 10.90.10.14  255.255.255.240"
-     - host: "oravm-2"
-       ora_pub:  "oravm-2       en1 172.40.10.98  255.255.255.0"
-       ora_pvt1: "orac2-priv1   en2 10.80.10.5   255.255.255.240"
-       ora_pvt2: "orac2-priv2   en3 10.90.10.7  255.255.255.240"
-
-
+    - host: "129.40.76.93"
+      pub:      "p224n93     en0 129.40.76.93  255.255.255.0  129.40.76.254"
+      ora_pub:  "rac91       en1 192.168.64.91 255.255.252.0"
+      ora_pvt1: "rac91-1     en2 10.10.10.93   255.255.255.0"
+      ora_pvt2: "rac91-2     en3 10.10.20.93   255.255.255.0"
+    - host: "129.40.76.94"
+      pub:      "p224n94     en0 129.40.76.94  255.255.255.0  129.40.76.254"
+      ora_pub:  "rac92       en1 192.168.64.92 255.255.252.0"
+      ora_pvt1: "rac92-1     en2 10.10.10.94   255.255.255.0"
+      ora_pvt2: "rac92-2     en3 10.10.20.94   255.255.255.0"
+    - host: "129.40.76.95"
+      pub:      "p224n95     en0 129.40.76.95  255.255.255.0  129.40.76.254"
+      ora_pub:  "rac93       en1 192.168.64.93 255.255.252.0"
+      ora_pvt1: "rac93-1     en2 10.10.10.95   255.255.255.0"
+      ora_pvt2: "rac93-2     en3 10.10.20.95   255.255.255.0"
+    - host: "129.40.76.96"
+      pub:      "p224n96     en0 129.40.76.96  255.255.255.0  129.40.76.254"
+      ora_pub:  "rac94       en1 192.168.64.94 255.255.252.0"
+      ora_pvt1: "rac94-1     en2 10.10.10.96   255.255.255.0"
+      ora_pvt2: "rac94-2     en3 10.10.20.96   255.255.255.0"
 
   # These are the entries that will be inserted in /etc/hosts.
   # The 3rd list element is an optional aliases. If there's no aliases,
@@ -389,32 +382,34 @@ config:
       # ----------       ------------------------  ---------------------------
       # 'x.x.x.x'        'myhost',                 [ '', ],
 #      '127.0.0.1',       'localhost',              [ 'localhost.localdomain', ],
+#      '9.3.49.229',      'orac3',                  [ 'orac3.isst.aus.stglabs.ibm.com' ],
+#      '9.3.49.234',      'orac5',                  [ 'orac5.isst.aus.stglabs.ibm.com' ],
+#
+#      '10.10.10.1',      'orac3-1',                 [ '', ],
+#      '10.10.20.1',      'orac3-2',                 [ '', ],
+#      '10.10.10.2',      'orac5-1',                 [ '', ],
+#      '10.10.20.2',      'orac5-2',                 [ '', ],
 
-      # Example of 2-node config
-#      '192.168.64.91',  'rac91',                   [ 'rac91.ppc',],
-#      '192.168.64.92',  'rac92',                   [ 'rac92.ppc',],
-
-      # Private IP addresses for private network interface 1:
-#      '10.10.10.91',  'rac91-1',                [ '', ],
-#      '10.10.10.92',  'rac92-1',                [ '', ],
-
-       # Private IP addresses for private network interface 2:
-#      '10.10.20.91',  'rac91-2',                [ '', ],
-#      '10.10.20.92',  'rac92-2',                [ '', ],
-
-       '172.40.10.76',  'oravm-1',                   [ '',],
-       '172.40.10.98',  'oravm-2',                   [ '',],
+      '192.168.64.91',  'rac91',                   [ 'rac91.ppc',],
+      '192.168.64.92',  'rac92',                   [ 'rac92.ppc',],
+      '192.168.64.93',  'rac93',                   [ 'rac93.ppc',],
+      '192.168.64.94',  'rac94',                   [ 'rac94.ppc',],
 
       # Private IP addresses for private network interface 1:
-       '10.80.10.12',  'orac1-priv1',                [ '', ],
-       '10.80.10.5',  'orac2-priv1',                [ '', ],
+      '10.10.10.93',  'rac91-1',                [ '', ],
+      '10.10.10.94',  'rac92-1',                [ '', ],
+      '10.10.10.95',  'rac93-1',                [ '', ],
+      '10.10.10.96',  'rac94-1',                [ '', ],
 
        # Private IP addresses for private network interface 2:
-       '10.90.10.7',  'orac1-priv2',                [ '', ],
-       '10.90.10.14',  'orac2-priv2',                [ '', ],
+      '10.10.20.93',  'rac91-2',                [ '', ],
+      '10.10.20.94',  'rac92-2',                [ '', ],
+      '10.10.20.95',  'rac93-2',                [ '', ],
+      '10.10.20.96',  'rac94-2',                [ '', ],
     ]
 
-  # Define hdisks for various ASM disk groups 
+  # Define hdisks for various ASM disk groups (database HOME is mounted on
+  # "ACFS" ASM disk group)
   asmdisks:
     mode: '660'
     diskgroups:
@@ -456,11 +451,11 @@ config:
       #
       # DG Name  New Prefix      Redundancy  hdisk numbers       [new disk numbers] [clear_pvids] [zero_disks]
       #--------  --------------  ----------  ------------------ ------------------- ------------- ------------
-      - ["OCRVOTE","ASMOCRVOTE", "EXTERNAL",         "3",            "3",     "clear_pvids", "zero_disks"]
-      - ["GIMR",   "ASMGIMR",    "EXTERNAL",         "4",            "4",     "clear_pvids", "zero_disks"]
-      - ["ACFS",   "ASMACFS",    "EXTERNAL",         "5",            "5",     "clear_pvids", "zero_disks"]
-      - ["DATA1",  "ASMDATA",    "EXTERNAL",         "6",            "6",     "clear_pvids", "zero_disks"]
-#      - ["DATA2",  "",           "EXTERNAL", "16 17 18 19",      "",                "clear_pvids", "zero_disks"]
+      - ["OCRVOTE","ASMOCRVOTE", "",         "23 24 25 26 27 28","1 2 3 4 5 6",     "clear_pvids", "zero_disks"]
+      - ["GIMR",   "ASMGIMR",    "",         "5 6",              "1 2",             "clear_pvids", "zero_disks"]
+      - ["ACFS",   "ASMACFS",    "",         "20 21",            "",                "clear_pvids", "zero_disks"]
+      - ["DATA1",  "ASMDATA",    "NORMAL",   "12 13 14 15",      "1 2 3 4",         "clear_pvids", "zero_disks"]
+      - ["DATA2",  "",           "EXTERNAL", "16 17 18 19",      "",                "clear_pvids", "zero_disks"]
 
   dsh:
     # The following entries will be inserted in /etc/environment.
@@ -473,13 +468,15 @@ config:
     - DSH_NODE_OPTS=
 
   # !!! update !!!
-#  vnc_hosts:
-    # The list of hosts that will have vnc password file created
-    # in ~/.vnc/vnc_passwd for global.grid_owner and global.db_owner.
+  vnc_hosts:
+    # The list of hosts that will have vnc installed and configured.
     # Enter the IP addresses of the hosts.
-#    - orac-rac2 
-#    - A.B.C.D
-
+    # Typically, the IP address of the first host.
+    # VNC server configuration will be configure only for global.db_owner.
+#    - 9.3.49.229
+#    - 9.3.49.234
+    - 129.40.76.93
+    - 129.40.76.94
 
 ###############################################################################
 install:
@@ -496,7 +493,7 @@ install:
     # !!! update !!!
     vol_redundancy: "UNPROTECTED"
     # !!! update !!!
-    vol_size_GB:     "80"
+    vol_size_GB:     "98"
 
   # !!! update !!!
   ora_zips:
@@ -506,40 +503,46 @@ install:
     #       because <some_directory> can be <export>/<sub_dirs>.
     #           local mnt pt, NFS export,   NFS server IP
     #           -----------   ----------    --------------
-    nfs_mount: [ '/repos',     '/repos',     '172.40.10.141', ]
+    nfs_mount: [ '/repos',     '/repos',     '129.40.76.1', ]
 
-
-    # !!! update !!!
-    opatch_subdir: "opatch"
+#    nfs_mount: [ '/repos',     '/images',     '9.3.121.20', ]
+#    opatch_subdir: "Oracle/opatch"
+    opatch_subdir: "images/oracle/opatch"
     opatch_zips:
-      v12_2_0_1_36: &v12_2_0_1_36 "OPatch_12.2.0.1.36.zip"
-      v12_2_0_1_32: &v12_2_0_1_32 "OPatch_12.2.0.1.32.zip"
-    #  v12_2_0_1_27: &v12_2_0_1_27 "12.2.0.1.27/p6880880_122010_AIX64-5L.zip"
-     # v12_2_0_1_25: &v12_2_0_1_25 "12.2.0.1.25/p6880880_122010_AIX64-5L.zip"
+      v12_2_0_1_27: &v12_2_0_1_27 "12.2.0.1.27/p6880880_122010_AIX64-5L.zip"
+      v12_2_0_1_25: &v12_2_0_1_25 "12.2.0.1.25/p6880880_122010_AIX64-5L.zip"
+#      v12_2_0_1_24: &v12_2_0_1_24 "12.2.0.1.24/p6880880_190000_AIX64-5L.zip"
       # If "latest" is not set or doesn't exist, the OPATCH that comes
       # with Grid will be used.
-      latest:       *v12_2_0_1_36
+      latest:       *v12_2_0_1_27
 
     # Oracle 19c base release zips
-    # !!! update !!!
-    base_subdir:  "19c"
+    base_subdir:  "images/oracle/19c"
+#    base_subdir:  "Oracle/19C"
     grid19c_zip:  "V982588-01_193000_grid.zip"
+#    grid19c_zip:  "AIX.PPC64_193000_grid_home.zip"
     db19c_zip:    "V982583-01_193000_db.zip"
+#    db19c_zip:    "AIX.PPC64_193000_db_home.zip"
 
     # Oracle 19c Release Update zips
-    # !!! update !!!
-    ru_subdir: "RU1918"
-    ora19c_ru8:  &ora19c_ru8  "RU19.8/p31305339_190000_AIX64-5L.zip"
+    ru_subdir: images/oracle/19c
+#    ru_subdir: "Oracle"
+#    ora19c_ru6: &ora19c_ru6    "19C-RU19.6/p30501910_190000_AIX64-5L.zip"
+#    ora19c_ru7: &ora19c_ru7    "19C-RU19.7/p30899722_190000_AIX64-5L_19.7.0.0.200414.zip"
+#    ora19c_ru8: &ora19c_ru8    "19C-RU19.8/p31305339_190000_AIX64-5L.zip"
+    ora19c_ru8: &ora19c_ru8      "RU19.8/p31305339_190000_AIX64-5L.zip"
+    # ora19c_ru9: &ora19c_ru9    "RU19.9/p31750108_190000_AIX64-5L_19cRU9.zip"
+    # There are 2 patches in RU19.9/  (phase 2)
+    # Patch_32172777_for_19.9 (2021-01-04)
+    # Patch_32242453_for_19.9 (2021-02-15) <-- superceded 2021-01-04
     ora19c_ru10: &ora19c_ru10 "RU19.10/p32226239_190000_AIX64-5L_RU19.10.zip"
     ora19c_ru11: &ora19c_ru11 "RU19.11/p32545008_190000_AIX64-5L-RU19.11.zip"
-    ora19c_ru12: &ora19c_ru12 "p32895426_190000_AIX64-5L_RU19.12.zip"
-    ora19c_ru14: &ora19c_ru14 "p33509923_190000_AIX64-5L.zip"
-    ora19c_ru17: &ora19c_ru17 "p34416665_190000_AIX64-5L.zip"
-    ora19c_ru18: &ora19c_ru18 "p34762026_190000_AIX64-5L.zip"
+    ora19c_ru12: &ora19c_ru12 "RU19.12/p32895426_190000_AIX64-5L_RU19.12.zip"
+
     # The following is the RU that will be installed, pick one from above.
     # Note, the value begins with '*', the remainder portion should match the
     # one that begins with '&'.
-    ora19c_ru: *ora19c_ru18
+    ora19c_ru: *ora19c_ru11
 
   compiler:
     base_fileset:
@@ -561,19 +564,18 @@ install:
     # For TL and SP, ALL files in their respective subdirs will be installed.
     # hosts is a list of nodes to install xlC.
     # !!! update !!!
-    hosts:    [ '' ]
-    base_dir: ""
-    tl_dir:   ""
-    sp_dir:   ""
-    fp_dir:   ""
+    hosts:    [ '129.40.76.93' ]
+    base_dir: "xlC/13.1.0.0vacpp"
+    tl_dir:   "xlC/13.1.3.0vacpp"
+    sp_dir:   "xlC/13.1.3.6vacpp"
+    fp_dir:   "xlC/xlC13_FP11"
     nfs_mount: [
       # local_mnt   nfs_export           nfs_server_host
       # --------    ----------           ----------------
-      '',  '',    ''
+      '/compiler',  '/aix/compilers',    '129.40.105.161'
     ]
 
-  # !!! update !!!
-  asm_sys_password: &asm_sys_password Sys_Passw0rd
+  asm_sys_password: &asm_sys_password Secure_Password_12
 
   # Refer to <Grid_HOME>/install/response/gridsetup.rsp for the descriptions
   # of the following variables which follow the same namespace here.
@@ -596,7 +598,8 @@ install:
         config:
           gpnp:
             # !!! update !!!
-            scanName: orac-scan
+#            scanName: rac-scan1
+            scanName: rac91-scn.ppc
             scanPort: 1521
         configureGIMR: true
       asm:
@@ -612,21 +615,23 @@ install:
           name: OCRVOTE
           AUSize: 4
           # Currently only EXTERNAL and NORMAL are allowed for redundancy
-          redundancy: EXTERNAL 
+          redundancy: NORMAL
         configureGIMRDataDG: true
         gimrDG:
           # name should match DG name in config.asmdisks.diskgroups
           name: GIMR
           AUSize: 4
           # Currently only EXTERNAL and NORMAL are allowed for redundancy
-          redundancy: EXTERNAL 
+          redundancy: NORMAL
       config:
         emAdminUser:
         emAdminPassword: 
         # !!! update !!!
-        clusterName: orac-cluster
+        clusterName: my-cluster
         # !!! update !!!
-        clusterNodes: oravm-1:oravm1-vip,oravm-2:oravm2-vip
+#        clusterNodes: orac3:racvip1,orac5:racvip2
+        clusterNodes: rac91:rac91-vip,rac92:rac92-vip,rac93:rac93-vip,rac94:rac94-vip
+#        clusterNodes: rac91:rac91-vip,rac92:rac92-vip
 
   # Refer to <DB_HOME>/install/response/db_install.rsp for the descriptions
   # of the variables.

@@ -1,3 +1,5 @@
+#!/usr/bin/perl
+
 # Copyright (c) IBM Corporation 2021
 
 # This script generates a grid response file based on the variables
@@ -138,14 +140,14 @@ $net_intf_list =  "{%- for h in config.networks -%}
                         {%- set ora_pvt2_net_and_mask = h.ora_pvt2.split().2 + '/' + h.ora_pvt2.split().3 -%}
                       {%- if h.pub is defined -%}
                         {%- set pub_net_and_mask = h.pub.split().2 + '/' + h.pub.split().3 -%}
-{{ h.pub.split().1      + ':' + pub_net_and_mask      | ipaddr('network') + ':3,' +
-   h.ora_pub.split().1  + ':' + ora_pub_net_and_mask  | ipaddr('network') + ':1,' +
-   h.ora_pvt1.split().1 + ':' + ora_pvt1_net_and_mask | ipaddr('network') + ':5,' +
-   h.ora_pvt2.split().1 + ':' + ora_pvt2_net_and_mask | ipaddr('network') + ':5' }}
+{{ h.pub.split().1      + ':' + pub_net_and_mask      | ansible.utils.ipaddr('network') + ':3,' +
+   h.ora_pub.split().1  + ':' + ora_pub_net_and_mask  | ansible.utils.ipaddr('network') + ':1,' +
+   h.ora_pvt1.split().1 + ':' + ora_pvt1_net_and_mask | ansible.utils.ipaddr('network') + ':5,' +
+   h.ora_pvt2.split().1 + ':' + ora_pvt2_net_and_mask | ansible.utils.ipaddr('network') + ':5' }}
                       {%- else -%}
-{{ h.ora_pub.split().1  + ':' + ora_pub_net_and_mask  | ipaddr('network') + ':1,' +
-   h.ora_pvt1.split().1 + ':' + ora_pvt1_net_and_mask | ipaddr('network') + ':5,' +
-   h.ora_pvt2.split().1 + ':' + ora_pvt2_net_and_mask | ipaddr('network') + ':5' }}
+{{ h.ora_pub.split().1  + ':' + ora_pub_net_and_mask  | ansible.utils.ipaddr('network') + ':1,' +
+   h.ora_pvt1.split().1 + ':' + ora_pvt1_net_and_mask | ansible.utils.ipaddr('network') + ':5,' +
+   h.ora_pvt2.split().1 + ':' + ora_pvt2_net_and_mask | ansible.utils.ipaddr('network') + ':5' }}
                       {%- endif -%}
                     {%- endif -%}
                   {%- endfor -%}";

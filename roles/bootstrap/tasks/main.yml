@@ -299,44 +299,21 @@
   when: bootstrap.netsvc_conf is defined
   changed_when: netsvc_conf_out.stdout is search('changed')
 
-- name: Fail if download_dir not specified
-  fail:
-    msg: download_dir not specified
-  when:  not download_dir is defined
+- name: Verify the host OS level
+  raw: "/usr/bin/oslevel  | /usr/bin/awk -F '.' ' { print $1 $2 }'"
+  register: os_level
+  changed_when: false
+  
+- name: Set a aix73 flag
+  set_fact:
+     aix73: false 
 
-- name: Fail if target_dir not specified
-  fail:
-    msg: target_dir not specified
-  when:  not target_dir is defined
-
-- name: Fail if rpm_src not specified
-  fail:
-    msg: rpm_src not specified
-  when:  not rpm_src is defined
-
-- name: Fail if yum_src not specified
-  fail:
-    msg: yum_src not specified
-  when:  not yum_src is defined
-
-- name: Check for existence of yum
-  raw: "rpm -q --quiet yum && echo true || echo false"
-  register: yum_exists
-  changed_when: not yum_exists.stdout is search("true")
-
-- name: Bootstrap yum
-  include_tasks: "roles/bootstrap/tasks/yum_install.yml"
-  when: not yum_exists.stdout is search("true")
-
-- name: Check for existence of python
-  raw: "rpm -q --quiet python && echo true || echo false"
-  register: python_exists
-  changed_when: not python_exists.stdout is search("true")
-
-- name: Bootstrap python
-  include_tasks: "roles/bootstrap/tasks/python_install.yml"
-  when: not python_exists.stdout is search("true")
-
-- name: End of bootstrap role
-  debug:
-    msg: "End of bootstrap role."
+- name: Set a aix73 flag
+  set_fact:
+     aix73: true
+  when: (os_level.stdout_lines[0] | int) >= 73
+  
+- include_tasks: yum_python.yml
+  when: not aix73
+- include_tasks: dnf_install.yml
+  when: aix73

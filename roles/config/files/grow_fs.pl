@@ -1,3 +1,5 @@
+#+!/usr/bin/perl -w
+
 # Copyright (c) IBM Corporation 2021
 
 # Idempotent: yes
@@ -141,7 +143,7 @@ __END__
 
 =head1 NAME
 
-grow_fs.pl - Check if filesystem has minimum free space
+grow_fs.pl - Check if the OS meets minimum OS level
 
 =head1 SYNOPSIS
 

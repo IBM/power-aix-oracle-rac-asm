@@ -6,6 +6,7 @@
   gather_facts: no
   vars_files:
     - vars.yml
+#    - dev_grid_oracle_ofa_vars.yml
   roles:
     - role: bootstrap
       vars:

@@ -1,3 +1,5 @@
+#!/usr/bin/ksh93
+
 # Copyright (c) IBM Corporation 2021
 
 # This script changes the auth_type from STD_AUTH to PAM_AUTH in

@@ -1,4 +1,4 @@
-# Copyright (c) IBM Corporation 2021
+#!/usr/bin/perl
 
 # This scripts runs on the localhost (Ansible controller).
 # Check each hdisk specified in config.disks has a consistent unique ID
@@ -15,8 +15,8 @@
 #                of changes of hdisks in config.disks after this script
 #                has run once, recheck is necessary.)
 
-$nodes = "129.40.76.93 129.40.76.94 129.40.76.95 129.40.76.96";
-$first_host = "129.40.76.93";
+$nodes = "oravm-1 oravm-2";
+$first_host = "oravm-1";
 
 if ("$nodes" eq "") {
   print "ERROR: nodes is blank.\n";

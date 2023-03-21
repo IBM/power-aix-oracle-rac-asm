@@ -18,7 +18,7 @@ This collection automates Oracle 19c RAC installation and creation steps.
 
 ## Resources
 
-For **guides** and **reference**, please visit the [Documentation](https://github.com/IBM/ansible-power-aix-oracle-asm/tree/main/docs/) site.
+For **guides** and **reference**, please visit the [Documentation](https://github.com/IBM/power-aix-oracle-rac-asm/tree/main/docs) site.
 
 ## License
 

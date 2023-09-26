@@ -69,8 +69,8 @@ opatch_zip="{{ install.ora_zips.opatch_zips.latest | default('') }}"
 if [ -n "$opatch_zip" ]; then
   # user has specified an opatch zip
   
-  if [ ! -f "{{ done_dir }}/opatch_unzipped" ]; then
-    if [ ! -d "$grid_home/OPatch.prev" ]; then
+  if [ ! -f "{{ done_dir }}/opatch_grid_unzipped" ]; then
+#    if [ ! -d "$grid_home/OPatch.prev" ]; then
 
       opatch_zip_path="$ora_zips_dir"
       opatch_subdir="{%- if install.ora_zips.opatch_subdir is defined and
@@ -88,12 +88,12 @@ if [ -n "$opatch_zip" ]; then
         exit 1
       fi
 
-      runcmd_nz "mv $grid_home/OPatch $grid_home/OPatch.prev"
-      echo "$grid_home/OPatch moved to $grid_home/OPatch.prev"
+      runcmd_nz "rm -rf $grid_home/OPatch"
+#      echo "$grid_home/OPatch moved to $grid_home/OPatch.prev"
       runcmd_nz "(cd $grid_home; unzip -o $opatch_zip_path )"
-      touch "{{ done_dir }}/opatch_unzipped"
+      touch "{{ done_dir }}/opatch_grid_unzipped"
       echo "$grid_home/OPatch changed."
-    fi
+#    fi
   fi
 fi
 runcmd_nz "( $grid_home/OPatch/opatch version )"

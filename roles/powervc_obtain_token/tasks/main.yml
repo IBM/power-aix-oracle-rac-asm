@@ -1,0 +1,24 @@
+---
+# tasks file for powervc_obtain_token
+# Author: Osman Omer of IBM Systems Expert Labs
+# Contact: osmaomer@qa.ibm.com
+
+- name: Connect to PowerVC and retrieve an auth token
+  uri:
+    url: https://{{ powervc_host }}:{{ auth_port }}/v3/auth/tokens
+    method: POST
+    body: '{"auth":{"scope":{"project":{"domain":{"name":"Default"},"name":"ibm-default"}},"identity":{"password":{"user":{"domain":{"name":"Default"},"password":"{{ pvc_password }}","name":"{{ pvc_user }}"}},"methods":["password"]}}}'
+    body_format: json
+    use_proxy: no
+    validate_certs: no
+    status_code: 201
+  register: auth
+
+- name: Set the auth token as a var for future API connections
+  set_fact:
+    auth_token: "{{ auth.x_subject_token }}"
+
+- name: Display the auth token
+  debug:
+    msg: "the token is {{ auth_token }}"
+

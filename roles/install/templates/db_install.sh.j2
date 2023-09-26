@@ -63,11 +63,27 @@ find . -type d -name 'InstallActions*' | while read d; do
 done
 )
 
+install_log="{{ done_dir }}/db_install.out"
+flag_ignorechecks={{ install.use_ignore_prechecks | lower }}
+
 cd $DB_HOME
-./runInstaller -applyRU $RU_DIR/$RU_NAME -silent -responseFile $DB_RSP <<EOF
+
+if [[ $flag_ignorechecks == true ]]
+then
+echo `date` >> $install_log
+echo "./runInstaller -applyRU $RU_DIR/$RU_NAME -silent -ignorePrereqFailure -responseFile $DB_RSP" >> $install_log
+./runInstaller -applyRU $RU_DIR/$RU_NAME -silent -ignorePrereqFailure -responseFile $DB_RSP <<EOF >> $install_log 2>&1
 y
 $PASSWORD
 EOF
+else
+echo `date` >> $install_log
+echo "./runInstaller -applyRU $RU_DIR/$RU_NAME -silent -responseFile $DB_RSP" >> $install_log
+./runInstaller -applyRU $RU_DIR/$RU_NAME -silent -responseFile $DB_RSP <<EOF >> $install_log 2>&1
+y
+$PASSWORD
+EOF
+fi
 
 #
 # Check for install status from install action log

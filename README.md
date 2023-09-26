@@ -5,6 +5,7 @@ This repository contains ansible **power_aix_oracle_rac_asm** collection which i
 
 This collection automates Oracle 19c RAC installation and creation steps.
 
+
 # Description
 
 ############################################ TO BE CONTINUE ####################################
@@ -17,8 +18,9 @@ This collection automates Oracle 19c RAC installation and creation steps.
 
 
 ## Resources
+The detail steps are mentioned in the readme document, Please go through it before you start using the collection
 
-For **guides** and **reference**, please visit the [Documentation](https://github.com/IBM/power-aix-oracle-rac-asm/tree/main/docs) site.
+For **guides** and **reference**, please visit the [Documentation](https://github.com/IBM/power-aix-oracle-rac-asm/tree/main/docs/) site.
 
 ## License
 

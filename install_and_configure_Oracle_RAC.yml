@@ -1,0 +1,23 @@
+---
+# install_and_configure_Oracle_RAC.yml
+# Powervc based deployments uses variable files vars/powervc.yml,vars/powervc_rac.yml
+# If the LPARs are build manually, to automate oracle RAC deployment use variable file vars/rac.yml 
+#- hosts: "{{ racName }}"   # racName variable is defined when you use the powervc automation scripts for building the AIX LPARs
+#- hosts: orac              # Get the group name from inventory file which contains the oracle cluster nodes
+  gather_facts: no
+  vars_files:
+#   - vars/powervc.yml
+#   - vars/powervc_rac.yml
+#   - vars/rac.yml
+  roles:
+    - role: bootstrap
+      vars:
+        download_dir: "~"
+        target_dir: "/tmp/.ansible.cpdir"
+      tags: bootstrap
+    - role: preconfig
+      tags: preconfig
+    - role: config
+      tags: config
+    - role: install
+      tags: install

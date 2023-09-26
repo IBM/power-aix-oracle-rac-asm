@@ -15,8 +15,8 @@
 #                of changes of hdisks in config.disks after this script
 #                has run once, recheck is necessary.)
 
-$nodes = "oravm-1 oravm-2";
-$first_host = "oravm-1";
+$nodes = "rac93 rac94";
+$first_host = "rac93";
 
 if ("$nodes" eq "") {
   print "ERROR: nodes is blank.\n";

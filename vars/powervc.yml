@@ -1,0 +1,95 @@
+---
+# Author: Osman Omer of IBM Systems Expert Labs
+# Contact: osmaomer@qa.ibm.com
+
+# racName: is the name of the Oracle RAC to be provisioned
+# This name is also used as the prefix to the nodes' names, disks' names and networking names
+#racName: placeholder
+nodeCount: 2
+node1: "{{racName}}1"
+node2: "{{racName}}2"
+
+# image: The name of the AIX image in PowerVC to be used for the provisioning.
+# It should contain AIX version 7.2 or 7.3, the image_aix_version should be to the TL, such 7.3.1
+# It should also have unzip rpm installed as well as all Oracle RAC required filesets installed.  
+#      - These filesets are defined in a variable named aix_filesets in the vars/rac.yml vars file.
+# Additionally the root password should be known.
+# The image's rootvg disk no less than 50GB along with a 75GB disks to be used by the installer for oravg.
+image: "AIX7301_50+75GBdisk"
+image_aix_version: "7.3.0"
+image_password: abc1234 
+flavor: medium  #it meets the min_cores: 2 and min_memory: 16 GB as set in vars/rac.yml
+
+# Networks:
+# network1:     for public IP, VIP and RAC scan IP. 
+#               Port to be created only for the public IP but DNS entry for all 3 IP functions.
+# network2:     for the first private IP, a port is required for it but not a DNS entry.
+# network3:     for the second private IP, a port is required for it but not a DNS entry.
+
+# network ports for interface assignment during LPAR provisioing
+netmask: "255.255.255.0"        #this is true for all 3 networks
+network1: "vlan156subset4OracleRAC"
+node1_pub_ip: "10.19.117.100"
+node2_pub_ip: "10.19.117.101"
+node1_pub_port: "{{node1}}-pub-port"
+node2_pub_port: "{{node2}}-pub-port"
+network2: "vlan888subset4OracleRAC"
+node1_priv1_ip: "10.16.116.102"
+node2_priv1_ip: "10.16.116.103"
+node1_priv1_port: "{{node1}}-priv1-port"
+node2_priv1_port: "{{node2}}-priv1-port"
+network3: "test_vlan"
+node1_priv2_ip: "172.12.13.102"
+node2_priv2_ip: "172.12.13.103"
+node1_priv2_port: "{{node1}}-priv2-port"
+node2_priv2_port: "{{node2}}-priv2-port"
+
+networks:
+- {name: "{{node1_pub_port}}", vlan: "{{network1}}", ip: "{{node1_pub_ip}}"}
+- {name: "{{node2_pub_port}}", vlan: "{{network1}}", ip: "{{node2_pub_ip}}"}
+- {name: "{{node1_priv1_port}}", vlan: "{{network2}}", ip: "{{node1_priv1_ip}}"}
+- {name: "{{node2_priv1_port}}", vlan: "{{network2}}", ip: "{{node2_priv1_ip}}"}
+- {name: "{{node1_priv2_port}}", vlan: "{{network3}}", ip: "{{node1_priv2_ip}}"}
+- {name: "{{node2_priv2_port}}", vlan: "{{network3}}", ip: "{{node2_priv2_ip}}"}
+
+net_ports:
+  node1_net_ports: "port-name={{node1_pub_port }},port-name={{ node1_priv1_port }},port-name={{ node1_priv2_port }}"
+  node2_net_ports: "port-name={{node2_pub_port }},port-name={{ node2_priv1_port }},port-name={{ node2_priv2_port }}"
+
+# virtual IP addresses can be obtained from DNS server using the following host names:
+node1_vip: "{{node1}}-vip"
+node2_vip: "{{node2}}-vip"
+rac_scan: "{{racName}}-scan"
+
+# DNS, NTP and NFS servers info
+dnsServerIP: "10.16.117.52"
+dnsDomain:   "labs.example.ibm.com"
+
+ntpServerIP: ""
+
+nfsServerIP: "10.16.17.121"
+nfsExportDir: "/software"
+nfsMountPoint: "/software"
+
+disks:
+- {name: "{{racName}}-ASMOCR1",     size: 10}
+- {name: "{{racName}}-ASMOCR2",     size: 10}
+- {name: "{{racName}}-ASMOCR3",     size: 10}
+- {name: "{{racName}}-ASMOCR4",     size: 10}
+- {name: "{{racName}}-GIMR1",       size: 40}
+- {name: "{{racName}}-GIMR2",       size: 40}
+- {name: "{{racName}}-ACFS-DBHome", size: 75}
+- {name: "{{racName}}-DBDisk1",     size: 10}
+- {name: "{{racName}}-DBDisk2",     size: 10}
+
+# powervc auth section 
+powervc_host: 10.196.17.90 
+auth_port: 5000
+nova_port: 8774
+cinder_port: 9000
+
+tenant_name: ibm-default
+tenant_id: 6a01a6c6f13c4fffff7ff5552170a371
+
+pvc_user: root
+pvc_password: passw0rd 

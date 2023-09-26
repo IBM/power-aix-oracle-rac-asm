@@ -1,0 +1,44 @@
+---
+# tasks file for powervc_add_nodes_to_inventory
+# Author: Osman Omer of IBM Systems Expert Labs
+# Contact: osmaomer@qa.ibm.com
+
+- name: Show which inventory file we are working with.
+  debug:
+    msg: Inventory file is {{ inventory_file }}
+
+- name: Append the {{ racName }} group header to the inventory file
+  lineinfile:
+    path: "{{ inventory_file }}"
+    line: "\n[{{ racName }}]"
+  vars:
+    ansible_python_interpreter: /usr/libexec/platform-python
+
+- name: Add the RAC nodes to the {{ racName }} group in the inventory file
+  lineinfile:
+    path: "{{ inventory_file }}"
+    line: "{{item.0}}  ansible_host={{item.1}}"
+  with_together:
+  - "{{ vms_namesList }}"
+  - "{{ vms_ipsList }}"
+  vars:
+    ansible_python_interpreter: /usr/libexec/platform-python
+
+- name: Add any variables specific to the {{ racName }} group in the inventory file
+  lineinfile:
+    path: "{{ inventory_file }}"
+    line: "{{ item }}"
+  with_items:
+  - "\n[{{racName}}:vars]"
+  - "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
+  - "ansible_user=root"
+  vars:
+    ansible_python_interpreter: /usr/libexec/platform-python
+
+- shell: "ssh-keyscan -H {{ vm_ip }} >> ~/.ssh/known_hosts"
+  with_items: "{{ vms_ipsList }}"
+  loop_control:
+    loop_var: vm_ip
+
+- meta: refresh_inventory
+

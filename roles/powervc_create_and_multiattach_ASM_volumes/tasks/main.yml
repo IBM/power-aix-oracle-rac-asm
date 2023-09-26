@@ -1,0 +1,57 @@
+---
+# tasks file for powervc_create_and_multiattach_ASM_volumes
+# Author: Osman Omer of IBM Systems Expert Labs
+# Contact: osmaomer@qa.ibm.com
+
+- name: Build the request body for the create new volume API
+  set_fact:
+    create_vol_body:  '{"volume": {"name": "{{ item.name }}", "size": {{ item.size}}, "multiattach": "True"}}'
+
+- name: Display the create new volume API body
+  debug:
+    msg: var body is {{ create_vol_body }}
+
+- name: Create a new multiattachable volume 
+  uri:
+    url: https://{{ powervc_host }}:{{ cinder_port }}/v3/{{ tenant_id }}/volumes
+    method: POST
+    body: "{{ create_vol_body }}"
+    body_format: json
+    validate_certs: no
+    use_proxy: no
+    status_code: 202
+    headers:
+      X-Auth-Token: "{{ auth_token }}"
+  register: lun
+  ignore_errors: yes
+
+- name: Build the request body for the attach volume API
+  set_fact:
+    attach_vol_body: '{"volumeAttachment": {"volumeId": "{{ lun.json.volume.id }}"}}'
+
+- name: Display the attach volume API body
+  debug:
+    msg: The attach vol body is {{ attach_vol_body }}
+
+- name: Attach volume to all VMs via uri module
+  uri:
+    url: https://{{ powervc_host }}:{{ nova_port }}/v2.1/{{ tenant_id }}/servers/{{counter}}/os-volume_attachments
+    method: POST
+    body: "{{ attach_vol_body }}"
+    body_format: json
+    validate_certs: no
+    use_proxy: no
+    headers:
+      X-Auth-Token: "{{ auth_token }}"
+  ignore_errors: yes
+  with_items: "{{ vms_idsList }}"
+  loop_control:
+    loop_var: counter
+
+- name: run cfgmgr command in all nodes to ensure unified device naming across the nodes
+  shell: sshpass -p "{{ image_password }}" ssh -o StrictHostKeyChecking=no {{ vm }} "cfgmgr"
+  with_items: "{{ vms_ipsList }}"
+  loop_control:
+    loop_var: vm
+  ignore_errors: true
+

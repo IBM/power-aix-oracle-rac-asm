@@ -1,0 +1,13 @@
+---
+# tasks file for powervc_create_network_ports
+# Author: Osman Omer of IBM Systems Expert Labs
+# Contact: osmaomer@qa.ibm.com
+
+- name: Create network ports based on holding dictionary
+  os_port:
+    state: present
+    name: "{{ item.name }}"
+    network: "{{ item.vlan }}"
+    fixed_ips:
+    - ip_address: "{{ item.ip }}"
+  with_items: "{{ networks }}"

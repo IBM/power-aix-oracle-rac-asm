@@ -1,0 +1,36 @@
+---
+# Author: Osman Omer of IBM Systems Expert Labs
+# Contact: osmaomer@qa.ibm.com
+
+- name: Build and configure the RAC nodes using PowerVC
+  # Must update the vars/powervc.vars var file then call this as follows:
+  # ansible-playbook build_AIX_nodes_for_Oracle_RAC.yml -e racName=<theRACname>"
+  # e.g. ansible-playbook build_AIX_nodes_for_Oracle_RAC.yml -e racName=oorac4rb
+  hosts: localhost
+
+  tasks:
+  - include_vars: "vars/powervc.yml"
+  - fail:
+      msg: "racName is required for this playbook to build a dual-node Oracle RAC."
+    when:  racName is not defined
+
+  - name: Display the input name prefix and count of VMs to be built
+    debug: 
+      msg: "Creating nodes {{racName}}1 and {{racName}}2 for this dual-node Oracle RAC."
+
+
+  - name: define the network ports based on the networks and IP addresses to be used.
+    import_role: name=powervc_create_network_ports
+
+  - name: Create new AIX VMs to act as Oracle RAC nodes
+    import_role: name=powervc_create_nodes_without_RAC_volumes
+
+  - import_role: name=powervc_obtain_token
+  - include_role: name=powervc_create_and_multiattach_ASM_volumes
+    with_items: "{{ disks }}"
+
+  - name: Now the nodes are good to go, add them to the inventory file to be managed by Ansible
+    import_role: name=powervc_add_nodes_to_inventory
+
+# Importing the playbook to be used for installing and configuring the Oracl RAC.
+- import_playbook: install_and_configure_Oracle_RAC.yml

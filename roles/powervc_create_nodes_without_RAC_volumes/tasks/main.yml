@@ -1,0 +1,47 @@
+---
+# tasks file for powervc_create_nodes_without_RAC_volumes
+# Author: Osman Omer of IBM Systems Expert Labs
+# Contact: osmaomer@qa.ibm.com
+
+- name: Create ssh key pair definition
+  os_keypair:
+    name: ssh_key
+    public_key_file: "{{ ansible_env.HOME }}/.ssh/id_rsa.pub"
+    
+- name: Provision the new virtual machines
+  os_server:
+    state:    present
+    name:     "{{ racName }}{{ item }}"
+    image:    "{{ image }}"
+    flavor:   "{{ flavor }}"
+    availability_zone: Enterprise
+    key_name: ssh_key 
+    timeout:  600
+    nics: "{{ net_ports['node%s_net_ports' | format(item)] }}" 
+    #  with_sequence: "{{ nodeCount }}"
+  with_items: {1,2}
+  register: vms
+
+- name: Save the IDs, names and IP addresses of the VMs just created 
+  set_fact:
+    vms_idsList:   "{{ (vms.results | map(attribute='id')) | list }}"
+    vms_namesList: "{{ (vms.results | map(attribute='openstack.hostname')) | list }}"
+    vms_ipsList:  # "{{ (vms.results | map(attribute='openstack.accessIPv4')) | list }}"
+    - "{{ node1_pub_ip }}"
+    - "{{ node2_pub_ip }}"
+
+- name: display VMs details captured above
+  debug:
+    msg:
+    - VMs' IDs are {{ vms_idsList }}
+    - VMs' names are {{ vms_namesList }}
+    - VMs' IP addresses are {{ vms_ipsList }}
+
+- name: Wait for SSH port 22 to be available online on all VMs
+  wait_for:
+    host: "{{ vm }}"
+    port: 22
+  with_items: "{{ vms_ipsList }}"
+  loop_control:
+    loop_var: vm
+

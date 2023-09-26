@@ -1,0 +1,21 @@
+---
+# Copyright (c) IBM Corporation 2021
+
+galaxy_info:
+  role_name: powervc_add_nodes_to_inventory
+  author: Osman Omer
+  description: Ansible role for adding the new nodes to the Ansible inventory file
+  company: IBM
+
+  license: Apache-2.0
+
+  min_ansible_version: 2.9
+
+  platforms:
+  - name: AIX
+    versions: 
+    - 7.2
+    - 7.3
+
+  galaxy_tags: [aix]
+  dependencies: []

@@ -312,7 +312,13 @@
   set_fact:
      aix73: true
   when: (os_level.stdout_lines[0] | int) >= 73
-  
+
+  #- name: Changes /tmp to 5G size, holds ansible temp files
+  #  ibm.power_aix.filesystem:
+  #  filesystem: /tmp
+  #  state: present
+  #  attributes: size=5G
+    
 - include_tasks: yum_python.yml
   when: not aix73
 - include_tasks: dnf_install.yml

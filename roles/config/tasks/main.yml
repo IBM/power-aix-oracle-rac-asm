@@ -45,26 +45,47 @@
      aix73: true
   when: (os_level.stdout_lines[0] | int) >= 73
 
+
+- name: Check rpms 
+  ansible.builtin.shell: "lslpp -Lc|grep -i {{ item }}"
+  with_items:
+   - "{{ config.linux.tools + config.linux.optional_tools }}"
+  register: checkrpm
+  ignore_errors: True
+
+- name: make rpm list
+  set_fact:
+    rpm_list: |-
+      [
+      {% for rp in checkrpm.results %}
+         {% if rp.rc != 0 %}
+              "{{rp.item}}",
+         {% endif %}
+      {% endfor %}
+      ]
 - name: Install Linux tools
   yum:
-    name: "{{ config.linux.tools + config.linux.optional_tools | default([]) }}"
+    name: "{{ item }}"
     state: present
   register: linux_tools_out
-  when: not aix73
+  when: not aix73 and rpm_list is defined
   failed_when:
-    - (config.linux.tools is not defined) or (linux_tools_out.rc != 0)
+     - (config.linux.tools is not defined) or (linux_tools_out.rc != 0)
+  with_items:
+     - "{{ rpm_list }}"
 
 - name: Install Linux tools on AIX73
   dnf:
-    name: "{{ config.linux.tools + config.linux.optional_tools | default([]) }}"
+    name: "{{ item }}"
     state: latest
   environment:
-    PATH: "/usr/bin:/usr/sbin/:/opt/freeware/bin"
+    PATH: "/opt/freeware/bin"
   register: linux_tools_out
-  when: aix73
+  when: aix73 and rpm_list is defined
   failed_when:
-    - (config.linux.tools is not defined) or (linux_tools_out.rc != 0)
-
+     - (config.linux.tools is not defined) or (linux_tools_out.rc != 0)
+  with_items:
+     - "{{ rpm_list }}"
 
 - name: Set up groups for Grid and Database owners
   command: "mkgroup -A id={{ item.1 }} {{ item.0 }}"
@@ -87,7 +108,7 @@
     msg: "bash login shell needed but not installed."
   when:
     - bash_login_shell == true
-    - not lookup('pipe', ssh_root_conn + ' rpm -q bash', errors='ignore')
+    - not lookup('pipe', ssh_root_conn + ' lslpp -Lc|grep bash ', errors='ignore')
 
 - name: Copy add_bash_logincfg.sh
   copy:

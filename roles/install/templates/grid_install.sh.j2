@@ -47,17 +47,17 @@ echo "./gridSetup.sh -silent -applyRU $ru_dir/$ru_name -responsefile {{ files_di
 install_log="{{ done_dir }}/grid_install.out"
 
 aixefixfile="/tmp/efix_IJ38518.txt"
-
-if [ -f "$aixefixfile" ]
+flag_ignorechecks={{ install.use_ignore_prechecks | lower }}
+if [[ $flag_ignorechecks == true ||  -f $aixefixfile ]]
 then
-echo "./gridSetup.sh -silent -applyRU $ru_dir/$ru_name -ignorePrereqFailure -responsefile {{ files_dir }}/gridsetup.rsp"
-$grid_home/gridSetup.sh -applyRU $ru_dir/$ru_name -silent -ignorePrereqFailure -responsefile "{{ files_dir }}/gridsetup.rsp" <<EOF > $install_log 2>&1
+echo `date` "./gridSetup.sh -silent -applyRU $ru_dir/$ru_name -ignorePrereqFailure -responsefile {{ files_dir }}/gridsetup.rsp" >> $install_log
+$grid_home/gridSetup.sh -applyRU $ru_dir/$ru_name -silent -ignorePrereqFailure -responsefile "{{ files_dir }}/gridsetup.rsp" <<EOF >> $install_log 2>&1
 y
 $password
 EOF
 else
-echo "./gridSetup.sh -silent -applyRU $ru_dir/$ru_name -responsefile {{ files_dir }}/gridsetup.rsp"
-$grid_home/gridSetup.sh -applyRU $ru_dir/$ru_name -silent -responsefile "{{ files_dir }}/gridsetup.rsp" <<EOF > $install_log 2>&1
+echo `date` "./gridSetup.sh -silent -applyRU $ru_dir/$ru_name -responsefile {{ files_dir }}/gridsetup.rsp" >> $install_log 
+$grid_home/gridSetup.sh -applyRU $ru_dir/$ru_name -silent -responsefile "{{ files_dir }}/gridsetup.rsp" <<EOF >> $install_log 2>&1
 y
 $password
 EOF

@@ -94,9 +94,10 @@ if [ -n "$OPATCH_ZIP_PATH" ]; then
     echo "ERROR: Opatch zip path $OPATCH_ZIP_PATH not found."
     exit 1
   fi
-  if [ ! -d "OPatch.prev" ]; then
-    mv OPatch OPatch.prev
+  if [ ! -f "$DONE_DIR/opatch_db_unzipped" ]; then
+    rm -rf OPatch
     runcmd_nz "unzip -o $OPATCH_ZIP_PATH"
+    touch $DONE_DIR/opatch_db_unzipped
   fi
 fi
 

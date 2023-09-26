@@ -14,7 +14,7 @@ global:
 ###############################################################################
 
   # !!! update !!!
-  root_password: "XXx4xxxxxxx"
+  root_password: "XXXXXXXXX"
   grid_owner:  &grid_owner  "grid"
   grid_pgroup: &grid_pgroup "oinstall"
   db_owner:    &db_owner    "oracle"
@@ -50,9 +50,9 @@ bootstrap:
     # more than one nameservers. After gridSetup.sh/runInstaller complete,
     # the commented out entries will be restored.
     # !!! update !!!
-    nameservers: [ "172.40.10.141", "9.9.9.9" ]
+    nameservers: [ "192.168.10.10", "10.40.10.1" ]
     # !!! update !!!
-    search:   "ppc power-iaas.cloud.ibm.com"
+    search:   "ppc ibm.example.com"
 
 ###############################################################################
 preconfig:    
@@ -69,8 +69,8 @@ preconfig:
   # Add AIX network timeserver to /etc/hosts and run setclock.
   # To disable the AIX network timeserver, set the value to ""
   # !!! update !!!
-  # aix_timeserver: "129.40.76.1"
-  aix_timeserver: ""
+  # aix_timeserver: "19.40.76.10"
+  aix_timeserver: "10.40.6.1"
 
   # The NTP settings here are meant to provide basic client/server mode support.
   # Valid values for state are "present" and "absent". If the environment does
@@ -110,12 +110,17 @@ preconfig:
       # !!! update !!!
       # local_mnt   nfs_export                      nfs_server_host aix_ver_rel_tl
       # ---------   ----------                      -----------    -----------
-      ['/lppsource', '/usr/sys/inst.images', '172.40.10.141', '7.3.1' ]
+      ['/lppsource', '/nim/AIX73TL1/lppsource', '10.40.8.250', '7.3.1' ]
     ]
 
     # !!! update !!!
     subdir: 'installp/ppc'
 
+  # When nim mount is already exists in LPAR then there is no need of NFS server for installing filesets. 
+  # The LPARs created with powervs standard images have /usr/sys/inst.images filesystem mounted. 
+  # If you want to install filesets from a specific location set "use_powervs_std_nim" to true and specify the fileset location "powervs_loc"
+  use_powervs_std_nim: false 
+  powervs_loc: '/usr/sys/inst.images/installp/ppc' 
   # AIX required fileset
   aix_filesets: [
     'bos.adt.base',
@@ -128,8 +133,6 @@ preconfig:
     'bos.rte.security',
     'bos.rte.bind_cmds',
     'bos.compat.libs',
-    'bos.net.tcp.bind',
-    'bos.net.tcp.bind_utils',
     'xlC.aix61.rte',
     'xlC.rte',
     'rsct.basic.rte',
@@ -182,7 +185,7 @@ config:
     #dummyvg,    '64',      'big',     ['hdisk10', 'hdisk11'], 'clear_pvids', 'zero_disks'
 #    *oravg,     '256',      "big",     ['hdisk1', 'hdisk2'], 'clear_pvids', 'zero_disks'
 #    *oravg,     '256',      "big",     ['hdisk1', 'hdisk2'], '', 'zero_disks'
-    *oravg,     '256',      "big",     ['hdisk2'], 'clear_pvids',  'zero_disks'
+    *oravg,     '256',      "big",     ['hdisk1', 'hdisk2'], 'clear_pvids',  'zero_disks'
   ]
 
   fs:
@@ -201,7 +204,7 @@ config:
     # mountpoint   size    volgroup
     # ----------   ----    --------
     # "dummyfs'    "50G",  'dummyvg'
-    *ofa_fs,       "90G",  *oravg,
+    *ofa_fs,       "120G",  *oravg,
   ]
 
   # The following vars are of list type.
@@ -275,7 +278,7 @@ config:
       shell:        "/usr/bin/ksh"
       capabilities: "CAP_BYPASS_RAC_VMM,CAP_PROPAGATE,CAP_NUMA_ATTACH"
       # root password won't be changed
-      password:       "XXx9xxxxxxxxx"
+      password:       "XXXXXXXXX"
       # VNC truncates password to 8 chars
       #vnc_passwd:   "vncpass"
       # Oracle Doc ID 1587357.1 recommendation
@@ -319,6 +322,7 @@ config:
                fsize=-1 data=-1 stack=-1 rss=-1 core=-1 cpu=-1 nofiles=65536
 
   # !!! update !!!
+  # Specify the cluster domain if exists
   cluster_domain: 
 
   # !!! update !!!
@@ -356,14 +360,14 @@ config:
 #      ora_pvt1: "rac92-1     en2 10.10.10.94   255.255.255.0"
 #      ora_pvt2: "rac92-2     en3 10.10.20.94   255.255.255.0"
 
-     - host: "oravm-1"
-       ora_pub:  "oravm-1       en1 172.40.10.76 255.255.255.0"
-       ora_pvt1: "orac1-priv1   en2 10.80.10.12  255.255.255.240"
-       ora_pvt2: "orac1-priv2   en3 10.90.10.14  255.255.255.240"
-     - host: "oravm-2"
-       ora_pub:  "oravm-2       en1 172.40.10.98  255.255.255.0"
-       ora_pvt1: "orac2-priv1   en2 10.80.10.5   255.255.255.240"
-       ora_pvt2: "orac2-priv2   en3 10.90.10.7  255.255.255.240"
+     - host: "orac1"
+       ora_pub:  "orac1       en1 192.168.64.93 255.255.252.0"
+       ora_pvt1: "orac1-priv1   en2 10.10.10.95  255.255.255.0"
+       ora_pvt2: "orac1-priv2   en3 10.10.20.95  255.255.255.0"
+     - host: "orac2"
+       ora_pub:  "orac2       en1 192.168.64.94  255.255.252.0"
+       ora_pvt1: "orac2-priv1   en2 10.10.10.96   255.255.255.0"
+       ora_pvt2: "orac2-priv2   en3 10.10.20.96  255.255.255.0"
 
 
 
@@ -402,16 +406,16 @@ config:
 #      '10.10.20.91',  'rac91-2',                [ '', ],
 #      '10.10.20.92',  'rac92-2',                [ '', ],
 
-       '172.40.10.76',  'oravm-1',                   [ '',],
-       '172.40.10.98',  'oravm-2',                   [ '',],
+       '192.168.64.93',  'orac1',                   [ '',],
+       '192.168.64.94',  'orac2',                   [ '',],
 
       # Private IP addresses for private network interface 1:
-       '10.80.10.12',  'orac1-priv1',                [ '', ],
-       '10.80.10.5',  'orac2-priv1',                [ '', ],
+       '10.10.10.95',  'orac1-priv1',                [ '', ],
+       '10.10.10.96',  'orac2-priv1',                [ '', ],
 
        # Private IP addresses for private network interface 2:
-       '10.90.10.7',  'orac1-priv2',                [ '', ],
-       '10.90.10.14',  'orac2-priv2',                [ '', ],
+       '10.10.20.95',  'orac1-priv2',                [ '', ],
+       '10.10.20.96',  'orac2-priv2',                [ '', ],
     ]
 
   # Define hdisks for various ASM disk groups 
@@ -456,10 +460,10 @@ config:
       #
       # DG Name  New Prefix      Redundancy  hdisk numbers       [new disk numbers] [clear_pvids] [zero_disks]
       #--------  --------------  ----------  ------------------ ------------------- ------------- ------------
-      - ["OCRVOTE","ASMOCRVOTE", "EXTERNAL",         "3",            "3",     "clear_pvids", "zero_disks"]
-      - ["GIMR",   "ASMGIMR",    "EXTERNAL",         "4",            "4",     "clear_pvids", "zero_disks"]
-      - ["ACFS",   "ASMACFS",    "EXTERNAL",         "5",            "5",     "clear_pvids", "zero_disks"]
-      - ["DATA1",  "ASMDATA",    "EXTERNAL",         "6",            "6",     "clear_pvids", "zero_disks"]
+      - ["OCRVOTE","ASMOCRVOTE", "EXTERNAL",         "3 4 5 6",            "3 4 5 6",     "clear_pvids", "zero_disks"]
+      - ["GIMR",   "ASMGIMR",    "EXTERNAL",         "15 16",            "15 16",     "clear_pvids", "zero_disks"]
+      - ["ACFS",   "ASMACFS",    "EXTERNAL",         "20 21",            "20 21",     "clear_pvids", "zero_disks"]
+      - ["DATA1",  "ASMDATA",    "EXTERNAL",         "12 13",            "12 13",     "clear_pvids", "zero_disks"]
 #      - ["DATA2",  "",           "EXTERNAL", "16 17 18 19",      "",                "clear_pvids", "zero_disks"]
 
   dsh:
@@ -484,7 +488,9 @@ config:
 ###############################################################################
 install:
 ###############################################################################
-
+  # If you want to ignore known prechecks failures, you can the set flag "use_ignore_prechecks" to true 
+  # so that the oracle installer will ignore the prechecks during installation
+  use_ignore_prechecks: true 
   asm_acfs:
     # group_name should match DG Name defined in config.asmdisks.diskgroups
     group_name:     "ACFS"
@@ -496,7 +502,7 @@ install:
     # !!! update !!!
     vol_redundancy: "UNPROTECTED"
     # !!! update !!!
-    vol_size_GB:     "80"
+    vol_size_GB:     "90"
 
   # !!! update !!!
   ora_zips:
@@ -506,13 +512,13 @@ install:
     #       because <some_directory> can be <export>/<sub_dirs>.
     #           local mnt pt, NFS export,   NFS server IP
     #           -----------   ----------    --------------
-    nfs_mount: [ '/repos',     '/repos',     '172.40.10.141', ]
+    nfs_mount: [ '/repos',     '/repos',     '10.40.76.19', ]
 
 
     # !!! update !!!
-    opatch_subdir: "opatch"
+    opatch_subdir: "images/oracle/opatch"
     opatch_zips:
-      v12_2_0_1_36: &v12_2_0_1_36 "OPatch_12.2.0.1.36.zip"
+      v12_2_0_1_36: &v12_2_0_1_36 "12.2.0.1.36/p6880880_210000_AIX64-5L.zip"
       v12_2_0_1_32: &v12_2_0_1_32 "OPatch_12.2.0.1.32.zip"
     #  v12_2_0_1_27: &v12_2_0_1_27 "12.2.0.1.27/p6880880_122010_AIX64-5L.zip"
      # v12_2_0_1_25: &v12_2_0_1_25 "12.2.0.1.25/p6880880_122010_AIX64-5L.zip"
@@ -522,25 +528,25 @@ install:
 
     # Oracle 19c base release zips
     # !!! update !!!
-    base_subdir:  "19c"
+    base_subdir:  "images/oracle/19c"
     grid19c_zip:  "V982588-01_193000_grid.zip"
     db19c_zip:    "V982583-01_193000_db.zip"
 
     # Oracle 19c Release Update zips
     # !!! update !!!
-    ru_subdir: "RU1918"
+    ru_subdir: "images/oracle/19c"
     ora19c_ru8:  &ora19c_ru8  "RU19.8/p31305339_190000_AIX64-5L.zip"
     ora19c_ru10: &ora19c_ru10 "RU19.10/p32226239_190000_AIX64-5L_RU19.10.zip"
     ora19c_ru11: &ora19c_ru11 "RU19.11/p32545008_190000_AIX64-5L-RU19.11.zip"
     ora19c_ru12: &ora19c_ru12 "p32895426_190000_AIX64-5L_RU19.12.zip"
     ora19c_ru14: &ora19c_ru14 "p33509923_190000_AIX64-5L.zip"
-    ora19c_ru17: &ora19c_ru17 "p34416665_190000_AIX64-5L.zip"
-    ora19c_ru18: &ora19c_ru18 "p34762026_190000_AIX64-5L.zip"
+    ora19c_ru17: &ora19c_ru17 "RU19.17/RU19.17-p34416665_190000_AIX64-5L.zip"
     # The following is the RU that will be installed, pick one from above.
     # Note, the value begins with '*', the remainder portion should match the
     # one that begins with '&'.
-    ora19c_ru: *ora19c_ru18
+    ora19c_ru: *ora19c_ru17
 
+# specifying the compiler details is optional
   compiler:
     base_fileset:
       - xlCcmp.13.1.0
@@ -626,7 +632,7 @@ install:
         # !!! update !!!
         clusterName: orac-cluster
         # !!! update !!!
-        clusterNodes: oravm-1:oravm1-vip,oravm-2:oravm2-vip
+        clusterNodes: orac1:orac1-vip,orac2:orac2-vip
 
   # Refer to <DB_HOME>/install/response/db_install.rsp for the descriptions
   # of the variables.

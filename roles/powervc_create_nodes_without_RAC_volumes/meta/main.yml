@@ -1,0 +1,21 @@
+---
+# Copyright (c) IBM Corporation 2021
+
+galaxy_info:
+  role_name: powervc_create_nodes_without_RAC_volumes
+  author: Osman Omer
+  description: Ansible role for creating the 2 Oracle RAC AIX nodes
+  company: IBM
+
+  license: Apache-2.0
+
+  min_ansible_version: 2.9
+
+  platforms:
+  - name: AIX
+    versions: 
+    - 7.2
+    - 7.3
+
+  galaxy_tags: [aix]
+  dependencies: []

@@ -111,20 +111,26 @@
 - name: Fail if lpp source nfs_mount is missing
   fail:
     msg: "preconfig.lpp_src.nfs_mount is missing"
-  when: preconfig.lpp_src.nfs_mount | default([], true) | length == 0
+  when: 
+    - not preconfig.use_powervs_std_nim
+    - preconfig.lpp_src.nfs_mount | default([], true) | length == 0
 
 - name: Fail if lpp source nfs_mount is invalid"
   fail:
     msg: "preconfig.lpp_src.nfs_mount is invalid"
   loop: "{{ preconfig.lpp_src.nfs_mount }}"
-  when: item | default([], true) | length < 4
+  when: 
+    - not preconfig.use_powervs_std_nim
+    - item | default([], true) | length < 4
 
 - name: Check NFS export for lpp source is valid
   shell:
     cmd: "showmount -e {{ item.2 }} | grep \"{{ item.1 }} \""
   loop: "{{ preconfig.lpp_src.nfs_mount }}"
   register: showmount_lpp_out
-  when: aix_ver_rel_tl == item.3
+  when: 
+    - not preconfig.use_powervs_std_nim
+    - aix_ver_rel_tl == item.3
   changed_when: False
   failed_when: showmount_lpp_out.rc != 0
 
@@ -138,6 +144,7 @@
     auto_mount:  'yes'
   loop: "{{ preconfig.lpp_src.nfs_mount }}"
   when:
+    - not preconfig.use_powervs_std_nim
     - aix_ver_rel_tl == item.3
     - not lookup('pipe', ssh_root_conn + ' grep ^' + item.0 + '\:' + ' /etc/filesystems', errors='ignore')
 
@@ -146,14 +153,18 @@
     path:  "{{ item.0 }}"
     state: directory
   loop: "{{ preconfig.lpp_src.nfs_mount }}"
-  when: not lookup('pipe', ssh_root_conn + ' ls -d ' + item.0, errors='ignore')
+  when: 
+    - not preconfig.use_powervs_std_nim
+    - not lookup('pipe', ssh_root_conn + ' ls -d ' + item.0, errors='ignore')
 
 - name: NFS mount lpp source
   ibm.power_aix.mount:
     mount_dir: "{{ item.0 }}"
     state:     directory
   loop: "{{ preconfig.lpp_src.nfs_mount }}"
-  when: not lookup('pipe', ssh_root_conn + ' mount | grep ' + '\"' + item.0 + ' ' + '\"', errors='ignore')
+  when: 
+    - not preconfig.use_powervs_std_nim
+    - not lookup('pipe', ssh_root_conn + ' mount | grep ' + '\"' + item.0 + ' ' + '\"', errors='ignore')
 
 - name: Install additional AIX filesets
   command:
@@ -165,7 +176,76 @@
               {{ '/' + preconfig.lpp_src.subdir }}
            {%- endif -%}"
   loop:    "{{ preconfig.aix_filesets }}"
-  when: not lookup('pipe', ssh_root_conn + ' /usr/bin/lslpp -l ' + item + '*', errors='ignore')
+  when: 
+    - not preconfig.use_powervs_std_nim
+    - not lookup('pipe', ssh_root_conn + ' /usr/bin/lslpp -l ' + item + '*', errors='ignore')
+
+- name: Check and install nslookup fileset
+  block:
+    - name: Check for fileset
+      ansible.builtin.shell:
+        cmd: "/bin/ls *bind* || /bin/true"
+        chdir: "{{ preconfig.lpp_src.nfs_mount.0.0 }}
+               {%- if preconfig.lpp_src.subdir is defined and
+                      preconfig.lpp_src.subdir | default('', true) | length > 0
+               -%}
+                  {{ '/' + preconfig.lpp_src.subdir }}
+               {%- endif -%}" 
+      register: results  
+
+    - name: Install bind.rte fileset
+      command:
+        cmd: "/usr/sbin/installp -acgXd . -Y bind.rte"
+        chdir: "{{ preconfig.lpp_src.nfs_mount.0.0 }}
+               {%- if preconfig.lpp_src.subdir is defined and 
+                      preconfig.lpp_src.subdir | default('', true) | length > 0 
+               -%}
+                  {{ '/' + preconfig.lpp_src.subdir }}{%- endif -%}"   
+      when: 
+        - "'bind.rte' in results.stdout"
+        - not lookup('pipe', ssh_root_conn + ' /usr/bin/lslpp -l ' + 'bind.rte' + '*', errors='ignore')  
+  
+    - name: Install bos.net.tcp.bind_utils fileset
+      command:
+        cmd:  "/usr/sbin/installp -acgXd . -Y bos.net.tcp.bind_utils"
+        chdir: "{{ preconfig.lpp_src.nfs_mount.0.0 }}
+               {%- if preconfig.lpp_src.subdir is defined and
+                      preconfig.lpp_src.subdir | default('', true) | length > 0
+               -%}
+                  {{ '/' + preconfig.lpp_src.subdir }}
+               {%- endif -%}"
+      when: 
+        - "'bos.net.tcp.bind_utils' in results.stdout"
+        - not lookup('pipe', ssh_root_conn + ' /usr/bin/lslpp -l ' + 'bos.net.tcp.bind_utils' + '*', errors='ignore')        
+  when: not preconfig.use_powervs_std_nim
+
+- name: Install additional AIX filesets using PowerVS nim mount
+  command:
+    cmd:   "/usr/sbin/installp -acgXd . -Y {{ item }}"
+    chdir: "{{ preconfig.powervs_loc }}"
+  loop:    "{{ preconfig.aix_filesets }}"
+  when: preconfig.use_powervs_std_nim
+
+- name: Check and install nslookup fileset using powervs mount
+  block:
+    - name: PowerVS-Check for fileset
+      ansible.builtin.shell:
+        cmd: "/bin/ls *bind* || /bin/true"
+        chdir: "{{ preconfig.powervs_loc }}"
+      register: results
+
+    - name: PowerVS-Install bind.rte fileset
+      command:
+        cmd:  "/usr/sbin/installp -acgXd . -Y bind.rte"
+        chdir: "{{ preconfig.powervs_loc }}"
+      when: "'bind.rte' in results.stdout"
+
+    - name: PowerVS-Install bos.net.tcp.bind_utils fileset
+      command:
+        cmd:  "/usr/sbin/installp -acgXd . -Y bos.net.tcp.bind_utils"
+        chdir: "{{ preconfig.powervs_loc }}"
+      when: "'bos.net.tcp.bind_utils' in results.stdout"
+  when: preconfig.use_powervs_std_nim
 
 - name: Clear errpt logs
   command: /usr/bin/errclear 0

@@ -2,7 +2,7 @@
 # Copyright (c) IBM Corporation 2021
 
 galaxy_info:
-  role_name: powervc_create_and_multiattach_ASM_volumes
+  role_name: powervc_create_and_multiattach_asm_volumes
   author: Osman Omer
   description: Ansible role for creating new ASM disks and attach them to both Oracle RAC nodes
   company: IBM

@@ -23,10 +23,10 @@
     import_role: name=powervc_create_network_ports
 
   - name: Create new AIX VMs to act as Oracle RAC nodes
-    import_role: name=powervc_create_nodes_without_RAC_volumes
+    import_role: name=powervc_create_nodes_without_rac_volumes
 
   - import_role: name=powervc_obtain_token
-  - include_role: name=powervc_create_and_multiattach_ASM_volumes
+  - include_role: name=powervc_create_and_multiattach_asm_volumes
     with_items: "{{ disks }}"
 
   - name: Now the nodes are good to go, add them to the inventory file to be managed by Ansible

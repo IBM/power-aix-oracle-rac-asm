@@ -35,6 +35,8 @@
   set_fact:
     ssh_root_conn: "ssh {{ ansible_ssh_user }}@{{ ansible_host }}"
 
+
+
 - name: Set fact scripts dir
   set_fact:
     scripts_dir: "{{ global.scripts_dir | join('/') }}"
@@ -86,6 +88,7 @@
     src:  ../preconfig/templates/helper.sh.j2
     dest: "{{ scripts_dir }}/helper.sh"
     mode: '755'
+
 
 - name: Find AIX Version, Release, and TL
   set_fact:

@@ -1,0 +1,302 @@
+#!/usr/bin/ksh93
+
+# Copyright (c) IBM Corporation 2021
+
+# Provide ksh93 helper functions.
+
+####################################################################
+# in ksh93 the $SECONDS variable returns with decimal place.
+# in ksh   the $SECONDS variable does not return with decimal place.
+####################################################################
+
+tmpvar=$SECONDS
+echo $SECONDS | fgrep '.' > /dev/null 2>&1
+if [ $? != 0 ] ; then
+   echo "ERROR: THIS SCRIPT MUST BE INVOKED WITH 'ksh93'".
+   echo "Please run script using 'ksh93'. Aborting..."
+   exit -5
+fi
+
+
+  #+ this causes a non-zero return code if ANY part of the pipe fails
+set -o pipefail
+
+  #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++|
+  #+                                                                  +|
+  #+                     GLOBAL VARIABLES                             +|
+  #+                                                                  +|
+  #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++|
+
+
+    #++++++++++++++++++++++++|
+    #+ SIMPLE VARIABLES     +|
+    #++++++++++++++++++++++++|
+
+  #+ this is either empty (debug enabled) or set to ":" to ignore debug statements
+export DBG=":"
+
+
+
+  #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++|
+  #+                                                                  +|
+  #+                     FUNCTION DEFINITIONS                         +|
+  #+                                                                  +|
+  #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++|
+
+
+  #+################################
+  #+ checks if error code is a number
+  #+
+function is_num
+{
+  VAL="$1"
+  $DBG echo "is_num: VAL $VAL"
+  echo $VAL | egrep '^[0-9]+$' >/dev/null 2>&1
+  if [ "$?" -eq "0" ]; then
+    $DBG echo "is_num: VAL IS A NUMBER: $VAL"
+    return 0
+  else
+    $DBG echo "is_num: FAILURE: VAL IS NOT A NUMBER: $VAL"
+    return 1
+  fi
+}
+
+  
+  #+###########################
+  #+ aborts on a zero error code
+  #+
+function error_if_zero
+{
+  _res="$1"
+  _comment="$2"
+
+  if [ "X${_res}"   == "X" ] ; then echo "error_if_zero: Missing first  argument: _res"    ; exit -5; fi
+  if [ "X$_comment" == "X" ] ; then echo "error_if_zero: Missing second argument: _comment"; exit -5; fi
+
+  if ! is_num "${_res}" ; then
+    echo "error_if_zero: the variable _res (${_RES}) is NOT a number. Aborting..."; exit -5;
+  fi
+
+  if [ ${_res} == 0 ] ; then
+    echo "error_if_zero: _res variable is ${_res}.";
+    echo "error_if_zero: COMMENT: '${_comment}'";
+    echo "error_if_zero: Aborting...";
+    exit -5
+  fi
+}
+
+  #+###############################
+  #+ aborts on a NON zero error code
+  #+
+function error_if_non_zero
+{
+  _res="$1"
+  _comment="$2"
+
+  if [ "X${_res}"   == "X" ] ; then echo "error_if_non_zero: Missing first  argument: Aborting" ; exit -5; fi
+  if [ "X$_comment" == "X" ] ; then echo "error_if_non_zero: Missing second argument: Aborting" ; exit -5; fi
+
+  if ! is_num "${_res}" ; then
+    echo "error_if_non_zero: the variable _res (${_RES}) is NOT a number. Aborting..."; exit -5;
+  fi
+
+  if [ ${_res} != 0 ] ; then
+    echo "error_if_non_zero: _res variable is ${_res}.";
+    echo "error_if_non_zero: COMMENT: '${_comment}'";
+    echo "error_if_non_zero: Aborting...";
+    exit -5
+  fi
+}
+
+
+function remote_run_on_all_nodes {
+  command="$1"
+  echo "RUNNING COMMAND on ALL nodes:  $command"; echo
+
+  for node in ${c_racnodes_ia[@]};
+  do
+    echo dsh -n $node "$command"
+         dsh -n $node "$command"
+    error_if_non_zero $? "dsh -n $node $command FAILED"
+  done
+  echo; echo;
+  return 0
+}
+
+function remote_run_on_this_node {
+     node="$1"
+  command="$2"
+  
+  echo "RUNNING COMMAND on THIS node: $node -- $command"; echo
+  echo dsh -n $node "$command"
+       dsh -n $node "$command"
+    error_if_non_zero $? "dsh failed dsh -n $node $command"
+  echo; echo;
+  return 0
+}
+
+function fail_if_directory_exist {
+  thisdir="$1"
+  if [ -d $thisdir ] ; then
+    echo "Found directory: $thisdir. It should not exist. Aborting..."; exit -5;
+  fi
+  return 0
+}
+
+function fail_if_directory_doesnt_exist {
+  thisdir="$1"
+  if [ ! -d $thisdir ] ; then
+    echo "Cannot find directory: $thisdir. Aborting..."; exit -5;
+  fi
+  return 0
+}
+
+  #+-----------------------------------------------------------------------
+  #+
+  #+ A FUNCTION that returns TRUE if the CURRENT USER matches the AUTHORIZED USER
+  #+ passed in as the FIRST PARAMETER
+  #+
+function check_user_is
+{
+   #+ Unload the PARAMETERS into a more meaningful VARIABLE
+   _authorized_user=$1
+
+   if [[ ! `whoami` = $_authorized_user ]]; then
+      printf "\nYou must be logged on as '%s' to run this script. " $_authorized_user
+      printf "\nAborting ...\n\n" $_authorized_user
+      exit -5
+   fi
+   $DBG printf "\nThis script is running as user: %s\n" $_authorized_user
+   return 0
+}
+
+
+function fail_if_file_doesnt_exist {
+  thisfile="$1"
+  if [ ! -f $thisfile ] ; then
+    error_if_non_zero 99 "Fail_if_file_doesnt_exist: Cannot find file: ${thisfile}"
+  fi
+}
+
+
+# Argument is the full path of a file.
+function save_original
+{
+  file_path=$1
+  if [ -z "$file_path" ]; then
+    echo "ERROR: save_original found empty path name."
+    exit 1;
+  fi
+  fail_if_file_doesnt_exist $file_path
+
+  saved_dir="{{ saved_dir }}"
+  bn=$(basename $file_path)
+  if [ ! -f "$saved_dir/$bn" ] ; then
+    echo "Saving $file_path to $saved_dir/$bn"
+    cp -p $file_path $saved_dir/$bn
+    error_if_non_zero $? "0010 failed to save original"
+  fi
+
+  return 0
+}
+
+
+function runcmd
+{
+  _CMD="$1"
+
+  thisusr=`whoami`
+
+  $DBG echo "runcmd CMD: $1"
+
+  eval "$_CMD" > /tmp/OUT.${thisusr} 2>&1
+  res=$?
+  $DBG echo "Error Code: $res"; 
+
+  RESOUT=`cat /tmp/OUT.${thisusr}`
+  $DBG echo "runcmd: RESOUT result: $RESOUT"; 
+
+  return $res
+}
+
+function runcmd_nz
+{
+  _CMD="$1"
+  $DBG echo "runcmd_nz FAIL ON NON-zero: CMD: ${_CMD}"
+  runcmd "${_CMD}"
+  res=$?
+  error_if_non_zero $res "CMD failed: ${_CMD}"
+  return $res
+}
+
+function runcmd_z
+{
+  _CMD="$1"
+  $DBG echo "runcmd_z fail on ZERO: CMD: ${_CMD}"
+  runcmd "${_CMD}"
+  res=$?
+  error_if_zero $res "CMD failed: $CMD"
+  return $res
+}
+
+
+function fail_if_empty_var
+{ 
+  _var=$1
+  _nam=$2
+  if [ "X${_var}" == "X" ]   ; then echo "fail_if_empty_var: ${_nam} '$_var'. Aborting.." ; exit -5; fi
+}
+
+function entering
+{
+  $DBG echo "Entering $0 ..."
+  return 0
+}
+
+function leaving
+{
+  $DBG echo "Exiting $0 ..."
+  exit 0
+}
+
+function find_racnode_from_hostname
+{
+  hname=`hostname -s`
+
+  for racnode in ${c_racnodes_ia[@]}; 
+  do
+    rachn="${hn_of_racnode_aa[$racnode]}"
+    fail_if_empty_var $ranhn "${hn_of_racnode_aa[$racnode]}"
+    if [ "X$rachn" == "X$hname" ] ; then
+      export RACNODE=$racnode
+      return 0
+    fi
+  done
+
+    #+ ok we didnt find it, fail
+  error_if_non_zero 5 "find_hostip_from_hostname failed to find hostname: $hname"
+}
+
+
+   #+ Converts something that looks like this:
+   #+   '["192.168.64.1", "129.40.106.1",]'
+   #+ into something that looks like this
+   #+  '192.168.64.1 129.40.106.1'
+   #+ and puts the elements into array _lines
+   #+
+   #+ Make sure you invoke with the input line being encircled in '"'
+   #+  example: convert_chef_array_to_ksh_array "$c_resolvconf"
+   #+
+function convert_chef_array_to_ksh_array
+{
+  input="$1"
+
+  $DBG echo "INPUT: $input"
+  flatten=`echo "$input" | sed -e '/\[/s///' -e "/\]/s///" -e '/,/s///g' -e '/"/s///g`
+
+  set -A _lines $flatten
+
+  $DBG echo "ONE   ${_lines[0]}"
+  $DBG echo "TWO   ${_lines[1]}"
+  $DBG echo "three ${_lines[2]}"
+}

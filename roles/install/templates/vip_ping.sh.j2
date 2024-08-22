@@ -1,0 +1,83 @@
+#!/bin/bash
+
+# Define the clusterNodes variable
+clusterNodes="{{ install.grid_rsp.install.config.clusterNodes }}"
+scanname="{{ install.grid_rsp.install.crs.config.gpnp.scanName }}";
+done_dir="{{ done_dir }}"
+
+# Extract values separated by comma
+nodes=$(echo "$clusterNodes" | tr ',' '\n')
+
+# Print the scan VIP
+echo "Scan VIP:"
+echo "$scanname"
+
+# Perform nslookup for the SCAN
+echo "Performing nslookup for $scanname"
+nslookup "$scanname" > "${done_dir}/nslookup_tmp.txt"
+cat "${done_dir}/nslookup_tmp.txt" >> "${done_dir}/nslookup_output.txt"
+echo ""
+
+# Check if nslookup was successful
+if grep -q "Name:" "${done_dir}/nslookup_tmp.txt"; then
+    echo "NSlookup successful. Proceeding to ping."
+
+    # Extract all IP addresses from nslookup output
+    resolved_ips=($(awk '/^Address: / {print $2}' "${done_dir}/nslookup_tmp.txt"))
+
+    # Print the resolved IP addresses
+    echo "Resolved IP Addresses:"
+    printf "%s\n" "${resolved_ips[@]}"
+
+    # Ping each resolved IP address
+    for ip in "${resolved_ips[@]}"; do
+        echo "Pinging $ip"
+        ping -c 4 "$ip" > "${done_dir}/ping_tmp_${ip}.txt"
+        cat "${done_dir}/ping_tmp_${ip}.txt" >> "${done_dir}/ping_output.txt"
+        echo ""
+    done
+
+else
+    echo "NSlookup failed. Skipping ping."
+fi
+
+# Clean up temporary files
+rm -f "${done_dir}/nslookup_tmp.txt"
+rm -f "${done_dir}/ping_tmp_"*.txt
+
+# Loop through each value and extract the part after colon
+for node in $nodes; do
+    target_vip=$(echo "$node" | awk -F':' '{print $2}')
+
+    # Print the target VIP
+    echo "Target VIP:"
+    echo "$target_vip"
+
+    # Perform nslookup for the target host
+    echo "Performing nslookup for $target_vip"
+    nslookup "$target_vip" > "${done_dir}/nslookup_tmp.txt"
+    cat "${done_dir}/nslookup_tmp.txt" >> "${done_dir}/nslookup_output.txt"
+    echo ""
+
+    # Check if nslookup was successful
+    if grep -q "Name:" "${done_dir}/nslookup_tmp.txt"; then
+        echo "NSlookup successful. Proceeding to ping."
+        resolved_ip=$(awk '/^Address: / {print $2}' "${done_dir}/nslookup_tmp.txt")
+
+        # Print the resolved IP address
+        echo "Resolved IP Address:"
+        echo "$resolved_ip"
+
+        # Ping the resolved IP address
+        echo "Pinging $resolved_ip"
+        ping -c 4 "$resolved_ip" > "${done_dir}/ping_tmp.txt"
+        cat "${done_dir}/ping_tmp.txt" >> "${done_dir}/ping_output.txt"
+        echo ""
+    else
+        echo "NSlookup failed. Skipping ping."
+    fi
+
+    rm -f "${done_dir}/ping_tmp.txt"
+    rm -f "${done_dir}/nslookup_tmp.txt"
+done
+

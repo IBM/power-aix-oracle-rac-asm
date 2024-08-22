@@ -6,4 +6,4 @@ ansible-navigator:
       environment-variables:
          set:
             ANSIBLE_CONFIG: ansible.cfg
-      image: oracle_rac_aix_ee:latest
+      image: localhost/oracle_rac_aix_ee:latest

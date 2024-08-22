@@ -37,13 +37,13 @@
   raw: "/usr/bin/oslevel  | /usr/bin/awk -F '.' ' { print $1 $2 }'"
   register: os_level
   changed_when: false
-- name: Set a aix73 flag
-  set_fact:
-     aix73: false
-- name: Set a aix73 flag
-  set_fact:
-     aix73: true
-  when: (os_level.stdout_lines[0] | int) >= 73
+#- name: Set a aix73 flag
+#  set_fact:
+#     aix73: false
+#- name: Set a aix73 flag
+#  set_fact:
+#     aix73: true
+#  when: (os_level.stdout_lines[0] | int) >= 73
 
 
 - name: Check rpms 
@@ -63,29 +63,31 @@
          {% endif %}
       {% endfor %}
       ]
-- name: Install Linux tools
-  yum:
+#- name: Install Linux tools
+#  yum:
+#    name: "{{ item }}"
+#    state: present
+#  register: linux_tools_out
+#  when: not aix73 and rpm_list is defined
+#  failed_when:
+#     - (config.linux.tools is not defined) or (linux_tools_out.rc != 0)
+#  with_items:
+#     - "{{ rpm_list }}"
+
+- name: use dnf for installing rpm packages
+  dnf:
     name: "{{ item }}"
     state: present
+    use_backend: dnf4
+  environment:
+    PATH: "/usr/bin:/usr/sbin/:/opt/freeware/bin"
   register: linux_tools_out
-  when: not aix73 and rpm_list is defined
+  when: rpm_list is defined
   failed_when:
      - (config.linux.tools is not defined) or (linux_tools_out.rc != 0)
   with_items:
      - "{{ rpm_list }}"
 
-- name: Install Linux tools on AIX73
-  dnf:
-    name: "{{ item }}"
-    state: latest
-  environment:
-    PATH: "/opt/freeware/bin"
-  register: linux_tools_out
-  when: aix73 and rpm_list is defined
-  failed_when:
-     - (config.linux.tools is not defined) or (linux_tools_out.rc != 0)
-  with_items:
-     - "{{ rpm_list }}"
 
 - name: Set up groups for Grid and Database owners
   command: "mkgroup -A id={{ item.1 }} {{ item.0 }}"
@@ -181,13 +183,6 @@
   when:
     - item.value.ulimits is defined and item.value.ulimits | length > 0
 
-- name: Create ssh keys for users
-  shell:
-    cmd: mkdir -p ~{{ item.key}}/.ssh; ssh-keygen -t rsa -f ~{{ item.key }}/.ssh/id_rsa -C "" -N ""; chown -R {{ item.key }}:{{ item.value.pgroup }} ~{{ item.key }}/.ssh; chmod 700 ~{{ item.key }}/.ssh/*
-  args:
-    creates: ~{{ item.key }}/.ssh/id_rsa
-  loop: "{{ lookup('dict', config.users) }}"
-
 - name: Set fact ora_pub_ips
   set_fact:
     ora_pub_ips: "{{ ora_pub_ips | default([]) + [ item.ora_pub.split()[2] ] }}"
@@ -197,17 +192,6 @@
   fail:
     msg: "Failed to set fact ora_pub_ips"
   when: not ora_pub_ips.0 is defined
-
-- name: Set up ssh passwordless for root and grid user
-  command:
-    cmd:  "perl ./roles/config/files/ssh_passwordless.pl -h \"{{ rac_hosts | trim }}\" -n \"{{ rac_nodes | trim }}\" -u {{ item }} -d \"{{ config.cluster_domain | default('') }}\" -i \"{{ ora_pub_ips | join(' ')}}\" "
-  loop: "{{ [ global.grid_owner | default('', true), global.db_owner | default('', true) ] }}"
-  delegate_to: localhost
-  register: ssh_passwordless_out
-  changed_when: ssh_passwordless_out.stdout is search('changed')
-  when:
-    - inventory_hostname == first_host
-    - item != ""
 
 - name: Copy update_etc_hosts.pl
   copy:
@@ -227,6 +211,50 @@
     chdir: "{{ scripts_dir }}"
   register: update_etc_hosts_out
   changed_when: update_etc_hosts_out.stdout is search('changed')
+
+
+- name: Create ssh keys for users
+  shell:
+    cmd: mkdir -p ~{{ item.key}}/.ssh; ssh-keygen -t rsa -f ~{{ item.key }}/.ssh/id_rsa -C "" -N ""; chown -R {{ item.key }}:{{ item.value.pgroup }} ~{{ item.key }}/.ssh; chmod 700 ~{{ item.key }}/.ssh/*
+  args:
+    creates: ~{{ item.key }}/.ssh/id_rsa
+  loop: "{{ lookup('dict', config.users) }}"
+
+- name: Set up ssh passwordless for root and grid user
+  command:
+    cmd:  "perl ./roles/config/files/ssh_passwordless.pl -h \"{{ rac_hosts | trim }}\" -n \"{{ rac_nodes | trim }}\" -u {{ item }} -d \"{{ config.cluster_domain | default('') }}\" -i \"{{ ora_pub_ips | join(' ')}}\" "
+  loop: "{{ [ global.grid_owner | default('', true), global.db_owner | default('', true) ] }}"
+  delegate_to: localhost
+  register: ssh_passwordless_out
+  changed_when: ssh_passwordless_out.stdout is search('changed')
+  when:
+    - item != ""
+
+- name: Copy sshcheck.sh
+  copy:
+    src:  ./files/sshcheck.sh
+    dest: "{{ scripts_dir }}/sshcheck.sh"
+    mode: '0700'
+
+
+- name: Check SSH equivalence for grid user
+  command:
+    cmd: "./sshcheck.sh {{ global.grid_owner }} {% for host in config.networks %}{{ host.ora_pub.split()[0] }} {% endfor %}"
+    chdir: "{{ scripts_dir }}"
+  register: ssh_check_result_grid
+
+- name: Check SSH equivalence for oracle user
+  command:
+    cmd: "./sshcheck.sh {{ global.db_owner }} {% for host in config.networks %}{{ host.ora_pub.split()[0] }} {% endfor %}"
+    chdir: "{{ scripts_dir }}"
+  register: ssh_check_result_oracle
+
+
+- name: Fail the task if SSH check for grid or oracle user failed
+  fail:
+    msg: "SSH check failed for grid or oracle user"
+  when: (ssh_check_result_grid.stdout_lines + ssh_check_result_oracle.stdout_lines) | select('search', 'Failed') | list | length > 0
+
 
 - name: Run cfgmgr
   command:
@@ -391,19 +419,19 @@
   when: not rename_setup_dsks_done
   changed_when: False
 
+
 - name: Clear dsks_xcheck.pl on local
   command:
     cmd:  rm -f roles/config/files/dsks_xcheck.pl
-  args:
-    warn: false
   delegate_to: localhost
   when:
     - inventory_hostname == first_host
-    
+
+ 
 - name: Template out dsks_xcheck.pl to local
   template:
     src:  templates/dsks_xcheck.pl.j2
-    dest: roles/config/files/dsks_xcheck.pl
+    dest: "roles/config/files/dsks_xcheck.pl"
     mode: '700'
   delegate_to: localhost
   when:
@@ -621,6 +649,7 @@
     chdir: "{{ scripts_dir }}"
   register: syslog_out
   changed_when: syslog_out.stdout is search('changed')
+
 
 - name: Reboot to activate tunables/settings
   reboot:

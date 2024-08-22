@@ -199,6 +199,36 @@
     mount_dir: "{{ install.ora_zips.nfs_mount.0 }}"
   when: not lookup('pipe', ssh_root_conn + ' mount | grep ' + '\"' + install.ora_zips.nfs_mount.0 + ' ' + '\"', errors='ignore')
 
+- name: Template out vip_ping.sh
+  template:
+    src:  ./templates/vip_ping.sh.j2
+    dest: "{{ scripts_dir }}/vip_ping.sh"
+    mode: '700'
+  when:
+    - inventory_hostname == first_host
+
+- name: Run vip_ping.sh
+  command:
+    cmd: "./vip_ping.sh"
+    chdir: "{{ scripts_dir }}"
+  register: shell_result
+  when:
+    - inventory_hostname == first_host
+
+- name: Read ping output file
+  slurp:
+    src: "{{ done_dir }}/ping_output.txt"
+  register: ping_output_content
+  run_once: true
+
+- name: Fail task if successful ping is found
+  fail:
+    msg: "VIP {{ install.grid_rsp.install.config.clusterNodes }} has been used. Please check the {{ done_dir }}/ping_output.txt."
+  run_once: true
+  when: 
+    - '" 0% packet loss" in ping_output_content.content | b64decode'
+
+
 - name: Template out prep_grid_install.sh
   template:
     src:  templates/prep_grid_install.sh.j2
@@ -360,7 +390,9 @@
     mode: '700'
     owner: "{{ global.grid_owner }}"
     group: "{{ global.grid_pgroup }}"
-  when: inventory_hostname == first_host
+  when:
+    - config.fs.acfs_flag 
+    - inventory_hostname == first_host
 
 - name: Run create_acfs.sh
   command:
@@ -370,7 +402,9 @@
   become: yes
   become_user: "{{ global.grid_owner }}"
   become_method: su
-  when: inventory_hostname == first_host
+  when:
+    - config.fs.acfs_flag 
+    - inventory_hostname == first_host
   changed_when: create_acfs_out.stdout is search('changed')
   failed_when: create_acfs_out.stdout | regex_search('error|failed', ignorecase=True)
 
@@ -378,6 +412,7 @@
   fail:
     msg: "ERROR: {{ config.grid_base | flatten | list | join('/') }}/cfgtoollogs/asmca/scripts/acfs_script.sh doesn't exist."
   when:
+    - config.fs.acfs_flag
     - inventory_hostname == first_host
     - not lookup('pipe', ssh_root_conn + ' ls ' + config.grid_base | flatten | list | join('/') + '/cfgtoollogs/asmca/scripts/acfs_script.sh', errors='ignore')
 
@@ -385,6 +420,7 @@
   command: "{{ config.grid_base | flatten | list | join('/') }}/cfgtoollogs/asmca/scripts/acfs_script.sh"
   register: acfs_script_out
   when:
+    - config.fs.acfs_flag
     - inventory_hostname == first_host
     - not lookup('pipe', ssh_root_conn + ' ' + config.grid_home | flatten | list | join('/') + '/bin/srvctl status filesystem | grep ' + config.fs.acfs | flatten | list | join('/'), errors='ignore')
   failed_when: acfs_script_out.stdout | regex_search('error|failed', ignorecase=True)
@@ -395,7 +431,9 @@
     dest: "{{ scripts_dir }}/verify_acfs_mounted.sh"
     mode: '0755'
   register: verify_acfs_mounted_out
-  when: inventory_hostname == first_host
+  when:
+    - config.fs.acfs_flag 
+    - inventory_hostname == first_host
 
 - name: Run verify_acfs_mounted.sh
   command:
@@ -405,7 +443,9 @@
   become: yes
   become_user: "{{ global.grid_owner }}"
   become_method: su
-  when: inventory_hostname == first_host
+  when:
+    - config.fs.acfs_flag 
+    - inventory_hostname == first_host
   failed_when: run_verify_acfs_mounted_out.stdout is search('ERROR')
   changed_when: False
 
@@ -415,6 +455,30 @@
     dest: "{{ scripts_dir }}/prep_db_install.sh"
     mode: '755'
   when: inventory_hostname == first_host
+
+- name: Create db_home directory with oracle:oinstall ownership
+  file:
+    path: "{{ config.db_home | flatten | list | join ('/')}}"
+    owner: oracle
+    group: oinstall
+    mode: "0775"
+    state: directory
+  become: true
+  when:
+    - not config.fs.acfs_flag
+
+- name: Create db_base directory with oracle:oinstall ownership
+  file:
+    path: "{{ config.db_base | flatten | list | join ('/')}}"
+    owner: oracle
+    group: oinstall
+    mode: "0775"
+    state: directory
+  become: true
+  when:
+    - not config.fs.acfs_flag
+
+
 
 - name: Run prep_db_install.sh
   command:
@@ -427,6 +491,10 @@
   when: inventory_hostname == first_host
   changed_when: prep_db_install_out.stdout is search('changed')
   failed_when:  prep_db_install_out.stderr | regex_search('error|fail|not found', ignorecase=True)
+
+- name: Print captured output
+  debug:
+    var: prep_db_install_out.stdout
 
 - name: Template out gen_db_rsp.pl
   template:

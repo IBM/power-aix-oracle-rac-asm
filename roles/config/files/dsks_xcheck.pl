@@ -15,8 +15,8 @@
 #                of changes of hdisks in config.disks after this script
 #                has run once, recheck is necessary.)
 
-$nodes = "rac93 rac94";
-$first_host = "rac93";
+$nodes = "p224n95.pbm.ihost.com p224n96.pbm.ihost.com";
+$first_host = "p224n95.pbm.ihost.com";
 
 if ("$nodes" eq "") {
   print "ERROR: nodes is blank.\n";

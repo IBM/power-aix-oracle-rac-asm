@@ -1,0 +1,86 @@
+#!/usr/bin/ksh93
+#!/usr/bin/expect -f
+
+# Copyright (c) IBM Corporation 2021
+
+# This script performs grid silent install along with release update using 
+# gridSetup.sh -applyRU.
+
+# Idempotent: yes
+
+if [ ! -f ./helper.sh ]
+then
+    echo "$(basename $0): helper.sh not found in $(pwd)"
+    exit 1
+fi
+
+. ./helper.sh
+
+  #+ make sure this script is running as this user.
+check_user_is "{{ global.grid_owner }}"
+
+################################################################################
+#                                                                              #
+# Main                                                                         #
+#                                                                              #
+################################################################################
+
+ password="{{ global.root_password }}"
+grid_home="{{ config.grid_home | flatten | list | join ('/') }}"
+   ru_zip="{{ install.ora_zips.ora19c_ru }}"
+ru_subdir="{{ install.ora_zips.ru_subdir | default('') }}"
+ruversion="{{ ru_version_without_decimal }}"
+inventory_location="{{ install.grid_rsp.INVENTORY_LOCATION | flatten | list | join('/') }}"
+ora_zips_dir="{{ install.ora_zips.nfs_mount.0 }}"
+ru_zip_path="$ora_zips_dir"
+[ -n "$ru_subdir" ] && ru_zip_path="$ru_zip_path/$ru_subdir"
+ru_zip_path="$ru_zip_path/$ru_zip"
+if [ ! -f "$ru_zip_path" ]; then
+  echo "ERROR: $ru_zip_path not found.\n";
+  exit 1
+fi
+ru_name=$(expr "$ru_zip" : '^.*p\([0-9]*\)_.*$')
+
+ru_dir="{{ config.fs.ofa_fs }}/RU"
+
+cd $grid_home
+echo "./gridSetup.sh -silent -responsefile {{ files_dir }}/grid_rsp_base.rsp"
+
+install_log="{{ done_dir }}/grid_install_1918_plus.out"
+install_base_log="{{ done_dir }}/grid_install_base.out"
+aixefixfile="/tmp/efix_IJ38518.txt"
+
+echo `date` "./gridSetup.sh -silent -ignorePrereqFailure -responsefile {{ files_dir }}/grid_rsp_base.rsp" >> $install_base_log
+$grid_home/gridSetup.sh -silent -ignorePrereqFailure -responsefile "{{ files_dir }}/grid_rsp_base.rsp" <<EOF >> $install_base_log 2>&1
+y
+$password
+EOF
+
+echo `date` "OPatch/opatchauto apply $ru_dir/$ru_name -binary -oh $grid_home -target_type cluster" >> $install_base_log
+$grid_home/OPatch/opatchauto apply $ru_dir/$ru_name -binary -oh $grid_home -target_type cluster >> $install_base_log
+
+flag_ignorechecks={{ install.use_ignore_prechecks | lower }}
+if [[ $flag_ignorechecks == true ||  -f $aixefixfile ]]
+then
+echo `date` "./gridSetup.sh -silent -ignorePrereqFailure -responsefile {{ files_dir }}/grid_rsp_1918_plus.rsp" >> $install_log
+$grid_home/gridSetup.sh -silent -ignorePrereqFailure -responsefile "{{ files_dir }}/grid_rsp_1918_plus.rsp" <<EOF >> $install_log 2>&1
+y
+EOF
+
+else
+echo `date` "./gridSetup.sh -silent -responsefile {{ files_dir }}/grid_rsp_1918_plus.rsp" >> $install_log
+$grid_home/gridSetup.sh -silent -responsefile "{{ files_dir }}/grid_rsp_1918_plus.rsp" <<EOF >> $install_log 2>&1
+y
+EOF
+fi
+
+if grep -q 'Successfully Setup Software' $install_log; then
+  touch "{{ done_dir }}/grid_install_done"
+  grid_version=$($grid_home/bin/oraversion -compositeVersion)
+  echo "Grid install changed (Grid $grid_version install successfully.)"
+else
+  echo "ERROR: gridSetup.sh failed. See $install_log and gridSetupActions log on $(hostname) for details."
+  exit 1
+fi
+
+exit 0

@@ -12,12 +12,12 @@
     msg: "config.fs.ofa_fs is not specified."
   when: not config.fs.ofa_fs is defined or config.fs.ofa_fs | length == 0
 
-- name: Expand /opt target directory to 750M
-  ibm.power_aix.filesystem:
-    filesystem: /opt
-    state:      present
-    attributes: size=+750M
-  when: lookup('pipe', ssh_root_conn + ' df -m /opt | awk ' + '\'' + '$0 !~ /Filesystem/ {printf "%d", $2}' + '\'', errors='ignore') < '750'
+#- name: Expand /opt target directory to 750M
+#  ibm.power_aix.filesystem:
+#    filesystem: /opt
+#    state:      present
+#    attributes: size=+750M
+#  when: lookup('pipe', ssh_root_conn + ' df -m /opt | awk ' + '\'' + '$0 !~ /Filesystem/ {printf "%d", $2}' + '\'', errors='ignore') < '750'
 
 - name: Copy grow_fs.pl
   copy:
@@ -74,19 +74,17 @@
 #  with_items:
 #     - "{{ rpm_list }}"
 
+
 - name: use dnf for installing rpm packages
-  dnf:
-    name: "{{ item }}"
-    state: present
-    use_backend: dnf4
+  shell: "/opt/freeware/bin/dnf install -y {{ item }}"
   environment:
-    PATH: "/usr/bin:/usr/sbin/:/opt/freeware/bin"
+    PATH: "/opt/freeware/bin:/usr/bin:/usr/sbin"
   register: linux_tools_out
-  when: rpm_list is defined
+  when: rpm_list is defined and rpm_list | length > 0
   failed_when:
-     - (config.linux.tools is not defined) or (linux_tools_out.rc != 0)
+    - (config.linux.tools is not defined) or (linux_tools_out.rc != 0)
   with_items:
-     - "{{ rpm_list }}"
+    - "{{ rpm_list }}"
 
 
 - name: Set up groups for Grid and Database owners
@@ -229,6 +227,7 @@
   changed_when: ssh_passwordless_out.stdout is search('changed')
   when:
     - item != ""
+
 
 - name: Copy sshcheck.sh
   copy:
@@ -482,7 +481,7 @@
     cmd: "./rename_setup_dsks.sh 
          {{ '\"' + item.0 + '\"' + ' ' +
             '\"' + config.asmdisks.mode + '\"' + ' ' +
-            '\"' + global.grid_owner + ':' + global.grid_pgroup + '\"' + ' ' +
+            '\"' + global.grid_owner + ':' + db_asmadmingroup + '\"' + ' ' +
             '\"' + item.1 + '\"' + ' ' +
             '\"' + item.3 + '\"' + ' ' +
             '\"' + item.4 | default([]) | list | join + '\"'

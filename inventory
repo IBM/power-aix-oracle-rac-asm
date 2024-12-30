@@ -4,7 +4,6 @@ localhost	ansible_connection=local
 [all:vars]
 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 ansible_ssh_user=root
-ansible_python_interpreter=/usr/bin/python3.9
 
 [orac]
 node1.example.com  ansible_host=192.168.76.95

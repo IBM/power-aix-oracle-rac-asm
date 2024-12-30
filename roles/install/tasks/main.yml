@@ -206,6 +206,7 @@
     mode: '700'
   when:
     - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
 
 - name: Run vip_ping.sh
   command:
@@ -214,19 +215,22 @@
   register: shell_result
   when:
     - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
 
 - name: Read ping output file
   slurp:
     src: "{{ done_dir }}/ping_output.txt"
   register: ping_output_content
   run_once: true
-
+  when:
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
+ 
 - name: Fail task if successful ping is found
   fail:
     msg: "VIP {{ install.grid_rsp.install.config.clusterNodes }} has been used. Please check the {{ done_dir }}/ping_output.txt."
   run_once: true
   when: 
-    - '" 0% packet loss" in ping_output_content.content | b64decode'
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
 
 
 - name: Template out prep_grid_install.sh
@@ -247,20 +251,34 @@
   become_method: su
   changed_when: prep_grid_install_out.stdout is search('changed')
 
+
+- name: Remove ru version decimal point
+  set_fact:
+    ru_version_without_decimal: "{{ install.ora_zips.ru_version | regex_replace('\\.', '') }}"
+  when:
+    - install.ora_zips.ru_version | default(false)
+
+
 - name: Template out gen_grid_rsp.pl
   template:
     src: templates/gen_grid_rsp.pl.j2
     dest: "{{ scripts_dir }}/gen_grid_rsp.pl"
     mode: '700'
-  when: inventory_hostname == first_host
+  when: 
+    - inventory_hostname == first_host
+    - ru_version_without_decimal | int < 1918
+
 
 - name: Run gen_grid_rsp.pl
   command:
     cmd: "./gen_grid_rsp.pl"
     chdir: "{{ scripts_dir }}"
-  when: inventory_hostname == first_host
+  when: 
+    - inventory_hostname == first_host
+    - ru_version_without_decimal | int < 1918
   register: gen_grid_rsp_out
   changed_when: gen_grid_rsp_out.stdout is search('changed')
+
 
 - name: Template out myruncluvfy.sh
   template:
@@ -311,12 +329,16 @@
   changed_when: modify_nameserver_entries_out.stdout is search('changed')
   when: lookup('pipe', 'ssh root@' + first_host + ' ' + '\'' + 'cd ' + done_dir + '; ls | egrep -c "db_install_done|grid_install_done"' + '\'' , errors='ignore') != "2"
 
+
 - name: Template out grid_install.sh
   template:
     src:  templates/grid_install.sh.j2
     dest: "{{ scripts_dir }}/grid_install.sh"
     mode: '755'
-  when: inventory_hostname == first_host
+  when: 
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false)
+    - ru_version_without_decimal | int < 1918
 
 - name: Run grid_install.sh
   command:
@@ -325,11 +347,20 @@
   when:
     - inventory_hostname == first_host
     - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
+    - install.ora_zips.ru_version | default(false)
+    - ru_version_without_decimal | int < 1918
   become: yes
   become_user: "{{ global.grid_owner }}"
   become_method: su
   register: grid_install_out
   changed_when: grid_install_out.stdout is search('changed')
+
+- name: Run grid install 1918 plus
+  include_tasks: ../../install/tasks/grid_install_1918_plus.yml
+  when: 
+    - install.ora_zips.ru_version | default(false)
+    - ru_version_without_decimal | int >= 1918
+    - ru_version_without_decimal | int != 193
 
 - name: Copy out check_crs_services.pl
   copy:
@@ -475,8 +506,6 @@
     mode: "0775"
     state: directory
   become: true
-  when:
-    - not config.fs.acfs_flag
 
 
 
@@ -517,7 +546,11 @@
     src:  templates/db_install.sh.j2
     dest: "{{ scripts_dir }}/db_install.sh"
     mode: '755'
-  when: inventory_hostname == first_host
+  when: 
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false)
+    - ru_version_without_decimal | int < 1918
+
   
 - name: Run db_install.sh
   command:
@@ -526,11 +559,21 @@
   when: 
     - inventory_hostname == first_host
     - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/db_install_done', errors='ignore')
+    - install.ora_zips.ru_version | default(false)
+    - ru_version_without_decimal | int < 1918
   become: yes
   become_user: "{{ global.db_owner }}"
   become_method: su
   register: db_install_out
   changed_when: db_install_out.stdout is search('changed') or db_install_out.stdout is search('Successfully Setup Software')
+
+
+- name: Run DB install 1918 plus
+  include_tasks: ../../install/tasks/db_install_1918_plus.yml
+  when: 
+    - install.ora_zips.ru_version | default(false)
+    - ru_version_without_decimal | int >= 1918
+    - ru_version_without_decimal | int != 193
 
 - name: Run modify_nameserver_entries.sh - uncomment out entry(ies)
   command:

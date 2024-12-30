@@ -14,7 +14,7 @@ global:
 ###############################################################################
 
   # !!! update !!!
-  root_password: "P@ssw0rd12345"
+  root_password: "XXXXYYYYZZZZ"
   grid_owner:  &grid_owner  "grid"
   grid_pgroup: &grid_pgroup "oinstall"
   db_owner:    &db_owner    "oracle"
@@ -50,9 +50,9 @@ bootstrap:
     # more than one nameservers. After gridSetup.sh/runInstaller complete,
     # the commented out entries will be restored.
     # !!! update !!!
-    nameservers: [ "192.168.164.1","19.4.16.1" ]
+    nameservers: [ "192.168.10.1","9.40.16.1" ]
     # !!! update !!!
-    search:   "ppc"
+    search:   "example.com"
 
 ###############################################################################
 preconfig:    
@@ -110,7 +110,7 @@ preconfig:
       # !!! update !!!
       # local_mnt   nfs_export                      nfs_server_host aix_ver_rel_tl
       # ---------   ----------                      -----------    -----------
-      ['/lppsource', '/nim/AIX73TL1/lppsource', '19.4.76.116', '7.3.1' ]
+      ['/lppsource', '/nim/AIX73TL1/lppsource', '9.40.16.16', '7.3.1' ]
     ]
 
     # !!! update !!!
@@ -196,7 +196,7 @@ config:
     # The directory ACFS will be mounted on (mount point directory)
     # This is a list type.
     acfs:   &acfs   [ *ofa_fs, "19c", *db_owner ]
-    # Specify true - Database Home to be created on ACFS shared filesystem, False - DB home will be created on local Filesystem 
+    # if you want to use acfs then acfs_flag is true, if you want to use jfs then acfs_flag false
     acfs_flag: false
 
   # !!! update !!!
@@ -246,11 +246,10 @@ config:
      # Keep "tools" list as is. For additional RPM, use the "optional_tools"
      # variable.
      tools: [
-        'unzip', 'expect', 'bash'
+        'expect'
      ]
      # !!! update !!!
      optional_tools: [
-       'less', 
      ]
 
   grid_groups: &grid_groups [
@@ -280,7 +279,7 @@ config:
       shell:        "/usr/bin/ksh"
       capabilities: "CAP_BYPASS_RAC_VMM,CAP_PROPAGATE,CAP_NUMA_ATTACH"
       # root password won't be changed
-      password:       "P@ssw0rd1234"
+      password:       "XXXXYYYYZZZZ"
       # VNC truncates password to 8 chars
       #vnc_passwd:   "vncpass"
       # Oracle Doc ID 1587357.1 recommendation
@@ -350,26 +349,14 @@ config:
 #      ora_pvt1: "ora2-1      en3 10.10.10.2    255.255.255.0"
 #      ora_pvt2: "ora2-2      en4 10.10.20.2    255.255.255.0"
 
-      # Example of 4-network, 2-node config
-#    - host: "X.Y.Z.93"
-#      pub:      "p224n93     en0 X.Y.Z.93      255.255.255.0    X.Y.Z.1"
-#      ora_pub:  "rac91       en1 192.168.64.91 255.255.252.0"
-#      ora_pvt1: "rac91-1     en2 10.10.10.93   255.255.255.0"
-#      ora_pvt2: "rac91-2     en3 10.10.20.93   255.255.255.0"
-#    - host: "X.Y.Z.94"
-#      pub:      "p224n94     en0 X.Y.Z.94      255.255.255.0    X.Y.Z.1"
-#      ora_pub:  "rac92       en1 192.168.64.92 255.255.252.0"
-#      ora_pvt1: "rac92-1     en2 10.10.10.94   255.255.255.0"
-#      ora_pvt2: "rac92-2     en3 10.10.20.94   255.255.255.0"
-
      - host: "node1.example.com"
-       ora_pub:  "rac93.ppc       en1 192.168.64.93 255.255.252.0"
-       ora_pvt1: "rac93-priv1   en2 10.10.10.95  255.255.255.0"
-       ora_pvt2: "rac93-priv2   en3 10.10.20.95  255.255.255.0"
+       ora_pub:  "node1       en1 192.168.10.91 255.255.252.0"
+       ora_pvt1: "node1-priv1   en2 10.10.10.93  255.255.255.0"
+       ora_pvt2: "node1-priv2   en3 10.10.20.93  255.255.255.0"
      - host: "node2.example.com"
-       ora_pub:  "rac94.ppc       en1 192.168.64.94  255.255.252.0"
-       ora_pvt1: "rac94-priv1   en2 10.10.10.96   255.255.255.0"
-       ora_pvt2: "rac94-priv2   en3 10.10.20.96  255.255.255.0"
+       ora_pub:  "node2       en1 192.168.10.92 255.255.252.0"
+       ora_pvt1: "node2-priv1   en2 10.10.10.94  255.255.255.0"
+       ora_pvt2: "node2-priv2   en3 10.10.20.94  255.255.255.0"
 
 
 
@@ -396,28 +383,16 @@ config:
       # 'x.x.x.x'        'myhost',                 [ '', ],
 #      '127.0.0.1',       'localhost',              [ 'localhost.localdomain', ],
 
-      # Example of 2-node config
-#      '192.168.64.91',  'rac91',                   [ 'rac91.ppc',],
-#      '192.168.64.92',  'rac92',                   [ 'rac92.ppc',],
+       '192.168.10.91',  'node1',                   [ 'node1.example.com',],
+       '192.168.10.92',  'node2',                   [ 'node2.example.com',],
 
       # Private IP addresses for private network interface 1:
-#      '10.10.10.91',  'rac91-1',                [ '', ],
-#      '10.10.10.92',  'rac92-1',                [ '', ],
+       '10.10.10.93',  'node1-priv1',                [ '', ],
+       '10.10.10.94',  'node2-priv1',                [ '', ],
 
        # Private IP addresses for private network interface 2:
-#      '10.10.20.91',  'rac91-2',                [ '', ],
-#      '10.10.20.92',  'rac92-2',                [ '', ],
-
-       '192.168.64.93',  'rac93.ppc',                   [ 'rac93',],
-       '192.168.64.94',  'rac94.ppc',                   [ 'rac94',],
-
-      # Private IP addresses for private network interface 1:
-       '10.10.10.95',  'rac93-priv1',                [ '', ],
-       '10.10.10.96',  'rac94-priv1',                [ '', ],
-
-       # Private IP addresses for private network interface 2:
-       '10.10.20.95',  'rac93-priv2',                [ '', ],
-       '10.10.20.96',  'rac94-priv2',                [ '', ],
+       '10.10.20.93',  'node1-priv2',                [ '', ],
+       '10.10.20.94',  'node2-priv2',                [ '', ],
     ]
 
   # Define hdisks for various ASM disk groups 
@@ -462,8 +437,8 @@ config:
       #
       # DG Name  New Prefix      Redundancy  hdisk numbers       [new disk numbers] [clear_pvids] [zero_disks]
       #--------  --------------  ----------  ------------------ ------------------- ------------- ------------
-      - ["OCRVOTE","ASMOCRVOTE", "EXTERNAL",         "5 6 8 10",            "5 6 8 10",     "clear_pvids", "zero_disks"]
-      - ["GIMR",   "ASMGIMR",    "EXTERNAL",         "15 16",            "15 16",     "clear_pvids", "zero_disks"]
+      - ["OCRVOTE1","ASMOCRVOTE", "EXTERNAL",         "23 24 25 26",            "23 24 25 26",     "clear_pvids", "zero_disks"]
+      - ["GIMR1",   "ASMGIMR",    "EXTERNAL",         "15 16",            "15 16",     "clear_pvids", "zero_disks"]
       - ["ACFS",   "ASMACFS",    "EXTERNAL",         "20 21",            "20 21",     "clear_pvids", "zero_disks"]
       - ["DATA1",  "ASMDATA",    "EXTERNAL",         "12 13",            "12 13",     "clear_pvids", "zero_disks"]
 #      - ["DATA2",  "",           "EXTERNAL", "16 17 18 19",      "",                "clear_pvids", "zero_disks"]
@@ -492,7 +467,7 @@ install:
 ###############################################################################
   # If you want to ignore known prechecks failures, you can the set flag "use_ignore_prechecks" to true 
   # so that the oracle installer will ignore the prechecks during installation
-  use_ignore_prechecks: true 
+  use_ignore_prechecks: false 
   asm_acfs:
     # group_name should match DG Name defined in config.asmdisks.diskgroups
     group_name:     "ACFS"
@@ -504,7 +479,7 @@ install:
     # !!! update !!!
     vol_redundancy: "UNPROTECTED"
     # !!! update !!!
-    vol_size_GB:     "90"
+    vol_size_GB:     "200"
 
   # !!! update !!!
   ora_zips:
@@ -514,12 +489,14 @@ install:
     #       because <some_directory> can be <export>/<sub_dirs>.
     #           local mnt pt, NFS export,   NFS server IP
     #           -----------   ----------    --------------
-    nfs_mount: [ '/repos',     '/repos',     '19.4.76.1', ]
+    nfs_mount: [ '/repos',     '/repos',     '9.40.16.1', ]
 
 
     # !!! update !!!
     opatch_subdir: "images/oracle/opatch"
     opatch_zips:
+      v12_2_0_1_44: &v12_2_0_1_44 "12.2.0.1.44/p6880880_121010_AIX64-5L.zip"   
+      v12_2_0_1_42: &v12_2_0_1_42 "12.2.0.1.42/opatch-12.2.0.1.42_p6880880_190000_AIX64-5L.zip"
       v12_2_0_1_41: &v12_2_0_1_41 "12.2.0.1.41/opatch-12.2.0.1.41_p6880880_210000_AIX64-5L.zip"
       v12_2_0_1_36: &v12_2_0_1_36 "12.2.0.1.36/p6880880_210000_AIX64-5L.zip"
       v12_2_0_1_32: &v12_2_0_1_32 "OPatch_12.2.0.1.32.zip"
@@ -527,7 +504,7 @@ install:
      # v12_2_0_1_25: &v12_2_0_1_25 "12.2.0.1.25/p6880880_122010_AIX64-5L.zip"
       # If "latest" is not set or doesn't exist, the OPATCH that comes
       # with Grid will be used.
-      latest:       *v12_2_0_1_41
+      latest:       *v12_2_0_1_44
 
     # Oracle 19c base release zips
     # !!! update !!!
@@ -544,11 +521,14 @@ install:
     ora19c_ru12: &ora19c_ru12 "p32895426_190000_AIX64-5L_RU19.12.zip"
     ora19c_ru14: &ora19c_ru14 "p33509923_190000_AIX64-5L.zip"
     ora19c_ru17: &ora19c_ru17 "RU19.17/RU19.17-p34416665_190000_AIX64-5L.zip"
+    ora19c_ru18: &ora19c_ru18 "RU19.18/p34762026_190000_AIX64-5L.zip"
+    ora19c_ru24: &ora19c_ru24 "RU19.24/p36582629_190000_AIX64-5L_GI_RU19.24.zip"
+    ora19c_ru25: &ora19c_ru25 "RU19.25/p36916690_190000_AIX64-5L_GI_RU19.25.zip"
     # The following is the RU that will be installed, pick one from above.
     # Note, the value begins with '*', the remainder portion should match the
     # one that begins with '&'.
-    ora19c_ru: *ora19c_ru17
-
+    ora19c_ru: *ora19c_ru25
+    ru_version: 19.25
 # specifying the compiler details is optional
   compiler:
     base_fileset:
@@ -605,7 +585,7 @@ install:
         config:
           gpnp:
             # !!! update !!!
-            scanName: rac91-scn.ppc
+            scanName: node1-scan
             scanPort: 1521
         configureGIMR: true
       asm:
@@ -618,14 +598,14 @@ install:
         diskGroup:
           # This is for OCR/VOTE 
           # name should match DG name in config.asmdisks.diskgroups
-          name: OCRVOTE
+          name: OCRVOTE1
           AUSize: 4
           # Currently only EXTERNAL and NORMAL are allowed for redundancy
           redundancy: EXTERNAL 
         configureGIMRDataDG: true
         gimrDG:
           # name should match DG name in config.asmdisks.diskgroups
-          name: GIMR
+          name: GIMR1
           AUSize: 4
           # Currently only EXTERNAL and NORMAL are allowed for redundancy
           redundancy: EXTERNAL 
@@ -635,7 +615,7 @@ install:
         # !!! update !!!
         clusterName: orac-cluster
         # !!! update !!!
-        clusterNodes: rac93.ppc:rac93-vip.ppc,rac94.ppc:rac94-vip.ppc
+        clusterNodes: node1:node1-vip,node2:node2-vip
 
   # Refer to <DB_HOME>/install/response/db_install.rsp for the descriptions
   # of the variables.

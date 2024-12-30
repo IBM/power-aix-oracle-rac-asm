@@ -1,0 +1,40 @@
+- name: Template out gen_db_rsp_base.pl.j2
+  template:
+    src: templates/gen_db_rsp_base.pl.j2
+    dest: "{{ scripts_dir }}/gen_db_rsp_base.pl"
+    mode: '700'
+  when:
+    - inventory_hostname == first_host
+
+
+- name: Run gen_db_rsp_base.pl
+  command:
+    cmd: "./gen_db_rsp_base.pl"
+    chdir: "{{ scripts_dir }}"
+  when:
+    - inventory_hostname == first_host
+  register: gen_db_rsp_out_base
+  changed_when: gen_db_rsp_out_base.stdout is search('changed')
+
+- name: Template out db_install_1918_plus.sh
+  template:
+    src:  templates/db_install_1918_plus.sh.j2
+    dest: "{{ scripts_dir }}/db_install_1918_plus.sh"
+    mode: '755'
+  when:
+    - inventory_hostname == first_host
+
+
+- name: Run db_install_1918_plus.sh
+  command:
+    cmd:   "./db_install_1918_plus.sh"
+    chdir: "{{ scripts_dir }}"
+  when:
+    - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/db_install_done', errors='ignore')
+  become: yes
+  become_user: "{{ global.db_owner }}"
+  become_method: su
+  register: db_install_out
+  changed_when: db_install_out.stdout is search('changed') or db_install_out.stdout is search('Successfully Setup Software')
+

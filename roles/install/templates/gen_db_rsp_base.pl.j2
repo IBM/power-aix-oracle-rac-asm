@@ -1,0 +1,128 @@
+#!/usr/bin/perl
+
+# Copyright (c) IBM Corporation 2021
+
+# This script generates a database response file based on the variables
+# specified in install.db.rsp. The response file is located in
+# {{ files_dir }}/db_install.rsp on the first node.
+#
+# Run on first node.
+#
+# Idempotent: yes
+
+#
+# Hard-coded variables
+#
+$option            = "INSTALL_DB_SWONLY";
+$executerootscript = "true";
+$configmethod      = "ROOT";
+
+#
+# Set variables
+#
+$db_owner           = "{{ global.db_owner }}";
+$groupname          = "{{ global.db_pgroup }}";
+$oraclehome         = "{{ config.db_home | flatten | list | join('/') }}";
+$inventory_location = "{{ install.db_rsp.INVENTORY_LOCATION | join('/') }}";
+$cluster_nodes      = "{{ rac_nodes.split(' ') | first }}";
+$oracle_base        = "{{ install.db_rsp.ORACLE_BASE | flatten | list | join('/') }}";
+$install_edition    = "{{ install.db_rsp.db.InstallEdition }}";
+$osdba_group        = "{{ install.db_rsp.OSDBA_GROUP | default('') }}";
+$osoper_group       = "{{ install.db_rsp.OSOPER_GROUP | default('') }}";
+$osbackupdba_group  = "{{ install.db_rsp.OSBACKUPDBA_GROUP | default('') }}";
+$osdgdba_group      = "{{ install.db_rsp.OSDGDBA_GROUP | default('') }}";
+$oskmdba_group      = "{{ install.db_rsp.OSKBDBA_GROUP | default('') }}";
+$osracdba_grup      = "{{ install.db_rsp.OSRACDBA_GROUP | default('') }}";
+
+if ($osdba_group eq "") {
+  print "ERROR: install.db_rsp.OSDBA_GROUP not set.\n";
+  exit 1;
+}
+
+# Set default if os*_group not set
+$osoper_group      = $osdba_group if $osoper_group eq "";
+$osbackupdba_group = $osdba_group if $osbackupdba_group eq "";
+$osdgdba_group     = $osdba_group if $osdgdba_group eq "";
+$oskmdba_group     = $osdba_group if $oskmdba_group eq "";
+$osracdba_group    = $osdba_group if $osracdba_group eq "";
+
+# Create a hash for the groups that db_owner belongs to
+$groups = `/usr/bin/groups $db_owner`;
+$groups =~ /^${db_owner}\s+:\s+(.*)$/;
+%group_hash = map { $_ => 1 } (split(/\s/, $1));
+$group_size = keys %group_hash;
+if ($group_size == 0) {
+  print "ERROR: Failed to find number of groups for user $db_owner.\n";
+  exit 1;
+}
+
+# Check if the value of os*_groups are valid
+for $g ("osdba_group", "osoper_group", "osbackupdba_group", "osdgdba_group", "oskmdba_group", "osracdba_group") {
+  $g_value = eval $$g;
+  if (! defined $group_hash{$g_value}) {
+    $upper_g = $g;
+    $upper_g =~ tr/a-z/A-Z/;
+    print "ERROR: install.db_rsp.$upper_g has invalid value ", $g_value, "\n";
+    $num_invalid_groups++;
+  }
+}
+
+exit 1 if ($num_invalid_groups > 0);
+
+$db_template_rsp = "{{ config.db_home | flatten | list | join('/') }}/install/response/db_install.rsp";
+die "ERROR: $db_template_rsp not found.\n" if (! -f "$db_template_rsp");
+$db_rsp = "{{ files_dir }}/db_install_base.rsp";
+
+if (-f $db_rsp) {
+  open(IN, "< $db_rsp") or die "Failed to open $db_rsp: $!\n";
+  while (<IN>) {
+    chomp;
+    push(@old_db_rsp_lines, $_);
+  }
+  close IN;
+}
+
+$src_rsp = (-f $db_rsp) ? $db_rsp : $db_template_rsp;
+
+open(IN, "< $src_rsp") or die "Failed to open $src_rsp: $!\n";
+while ( <IN> ) {
+  chomp;
+  if ( /\\s*#/ ) { push(@new_db_rsp_lines, $_); next; }
+
+  s/$1/=$option/              if ( /^oracle.install.option(=.*$)/ );
+  s/$1/=$executerootscript/   if ( /^oracle.install.db.rootconfig.executeRootScript(=.*$)/ );
+  s/$1/=$configmethod/        if ( /^oracle.install.db.rootconfig.configMethod(=.*$)/ );
+
+  s/$1/=$inventory_location/  if ( /^INVENTORY_LOCATION(=.*$)/ );
+  s/$1/=$cluster_nodes/       if ( /^oracle.install.db.CLUSTER_NODES(=.*$)/ );
+  s/$1/=$oracle_base/         if ( /^ORACLE_BASE(=.*$)/ );
+  s/$1/=$install_edition/     if ( /^oracle.install.db.InstallEdition(=.*$)/ );
+  s/$1/=$osdba_group/         if ( /^oracle.install.db.OSDBA_GROUP(=.*$)/ );
+  s/$1/=$osoper_group/        if ( /^oracle.install.db.OSOPER_GROUP(=.*$)/ );
+  s/$1/=$osbackupdba_group/   if ( /^oracle.install.db.OSBACKUPDBA_GROUP(=.*$)/ );
+  s/$1/=$osdgdba_group/       if ( /^oracle.install.db.OSDGDBA_GROUP(=.*$)/ );
+  s/$1/=$oskmdba_group/       if ( /^oracle.install.db.OSKMDBA_GROUP(=.*$)/ );
+  s/$1/=$osracdba_group/      if ( /^oracle.install.db.OSRACDBA_GROUP(=.*$)/ );
+
+  push(@new_db_rsp_lines, $_);
+}
+close IN;
+
+sub params_changed {
+  return 1 if (scalar @old_db_rsp_lines == 0);
+  for $i (0 .. $#new_db_rsp_lines) {
+    return 1 if ("$new_db_rsp_lines[$i]" ne "$old_db_rsp_lines[$i]");
+  }
+  return 0;
+}
+
+if (params_changed() == 1) {
+  open(OUT, "> $db_rsp") or die "Failed to open $db_rsp: $!\n";
+  for $line (@new_db_rsp_lines) {
+    print OUT "$line\n";
+  }
+  close OUT;
+  print "$db_rsp changed. (created)\n";
+}
+
+exit 0;

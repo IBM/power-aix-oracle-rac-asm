@@ -70,9 +70,13 @@ for node in $nodes; do
 
         # Ping the resolved IP address
         echo "Pinging $resolved_ip"
-        ping -c 4 "$resolved_ip" > "${done_dir}/ping_tmp.txt"
+        ping -c 4 "$target_vip" > "${done_dir}/ping_tmp.txt"
         cat "${done_dir}/ping_tmp.txt" >> "${done_dir}/ping_output.txt"
         echo ""
+
+	if grep -q " 0% packet loss" "${done_dir}/ping_tmp.txt"; then
+           success_flag=1
+        fi
     else
         echo "NSlookup failed. Skipping ping."
     fi
@@ -80,4 +84,14 @@ for node in $nodes; do
     rm -f "${done_dir}/ping_tmp.txt"
     rm -f "${done_dir}/nslookup_tmp.txt"
 done
+
+
+# Exit with 0 if success_flag is set, otherwise exit with 1
+if [[ $success_flag -eq 1 ]]; then
+    echo "Ping successful for one or more IPs."
+    exit 0
+else
+    echo "No successful ping found."
+    exit 1
+fi
 

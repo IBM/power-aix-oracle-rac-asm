@@ -322,6 +322,6 @@
   #- include_tasks: yum_python.yml
   #  when: not aix73
 - include_tasks: dnf_install.yml
-  when: aix73
+  #when: aix73
 
 

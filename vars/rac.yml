@@ -246,11 +246,13 @@ config:
      # Keep "tools" list as is. For additional RPM, use the "optional_tools"
      # variable.
      tools: [
-        'expect'
+        'unzip', 'expect', 'bash'
      ]
      # !!! update !!!
      optional_tools: [
+       'less',
      ]
+
 
   grid_groups: &grid_groups [
     'oinstall', '1000',

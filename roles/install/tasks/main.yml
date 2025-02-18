@@ -213,25 +213,11 @@
     cmd: "./vip_ping.sh"
     chdir: "{{ scripts_dir }}"
   register: shell_result
+  failed_when: shell_result.rc == 0
+  any_errors_fatal: true
   when:
     - inventory_hostname == first_host
     - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
-
-- name: Read ping output file
-  slurp:
-    src: "{{ done_dir }}/ping_output.txt"
-  register: ping_output_content
-  run_once: true
-  when:
-    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
- 
-- name: Fail task if successful ping is found
-  fail:
-    msg: "VIP {{ install.grid_rsp.install.config.clusterNodes }} has been used. Please check the {{ done_dir }}/ping_output.txt."
-  run_once: true
-  when: 
-    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
-
 
 - name: Template out prep_grid_install.sh
   template:
@@ -357,7 +343,8 @@
 
 - name: Run grid install 1918 plus
   include_tasks: ../../install/tasks/grid_install_1918_plus.yml
-  when: 
+  when:
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore') 
     - install.ora_zips.ru_version | default(false)
     - ru_version_without_decimal | int >= 1918
     - ru_version_without_decimal | int != 193
@@ -520,6 +507,8 @@
   when: inventory_hostname == first_host
   changed_when: prep_db_install_out.stdout is search('changed')
   failed_when:  prep_db_install_out.stderr | regex_search('error|fail|not found', ignorecase=True)
+
+
 
 - name: Print captured output
   debug:

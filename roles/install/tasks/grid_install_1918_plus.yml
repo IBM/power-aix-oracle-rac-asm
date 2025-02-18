@@ -41,7 +41,6 @@
     chdir: "{{ scripts_dir }}"
   when:
     - inventory_hostname == first_host
-    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
   become: yes
   become_user: "{{ global.grid_owner }}"
   become_method: su
@@ -54,6 +53,7 @@
     cmd: "{{install.grid_rsp.INVENTORY_LOCATION | flatten | list | join('/')}}/orainstRoot.sh"
   become: yes
   throttle: 1
+  when:
 
 
 
@@ -76,7 +76,7 @@
 
 
 - name: Running ConfigTools
-  shell: "{{config.grid_home | flatten | list | join ('/')}}/gridSetup.sh -silent -executeConfigTools -responseFile {{ files_dir }}/grid_rsp_1918.rsp  >> {{ done_dir }}/runconfigtools.out 2>&1"
+  shell: "{{config.grid_home | flatten | list | join ('/')}}/gridSetup.sh -silent -executeConfigTools -responseFile {{ files_dir }}/grid_rsp_1918_plus.rsp >> {{ done_dir }}/runconfigtools.out 2>&1"
   become: yes
   become_method: su
   become_user: "{{global.grid_owner}}"
@@ -85,3 +85,4 @@
   register: grid_configtools
   when:
     - inventory_hostname == first_host
+

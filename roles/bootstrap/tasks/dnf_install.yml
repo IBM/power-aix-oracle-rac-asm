@@ -3,6 +3,6 @@
 - import_role:
     name: ibm.power_aix.power_aix_bootstrap
   vars:
-    pkgtype: "dnf"
-    download_dir: "~"
-    target_dir: "/tmp/.ansible.cpdir"
+    power_aix_bootstrap_pkgtype: "dnf"
+    power_aix_bootstrap_download_dir: "~"
+    power_aix_bootstrap_target_dir: "/tmp/.ansible.cpdir"

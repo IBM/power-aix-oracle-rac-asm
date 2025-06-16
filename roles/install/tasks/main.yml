@@ -169,13 +169,17 @@
 - name: Fail if Oracle zips nfs_mount invalid
   fail:
     msg: "install.ora_zips.nfs_mount is invalid or missing"
-  when:  install.ora_zips.nfs_mount | default([], true) | length != 3
+  when:  
+    - install.ora_zips.nfs_mount | default([], true) | length != 3
+    - install.ora_zips.ora_binary_location == 'nfs'
 
 - name: Check NFS export for Oracle zips invalid
   shell:
     cmd: "showmount -e {{ install.ora_zips.nfs_mount.2 }} | grep \"{{ install.ora_zips.nfs_mount.1 }} \""
   register: showmount_ora_zips_out
-  when: not lookup('pipe', ssh_root_conn + ' grep ^' + install.ora_zips.nfs_mount.0 + '\:'+ ' /etc/filesystems', errors='ignore')
+  when: 
+    - not lookup('pipe', ssh_root_conn + ' grep ^' + install.ora_zips.nfs_mount.0 + '\:'+ ' /etc/filesystems', errors='ignore')
+    - install.ora_zips.ora_binary_location == 'nfs'
   changed_when: False
   failed_when: showmount_ora_zips_out.rc != 0
 
@@ -187,18 +191,23 @@
     state:       'present'
     permissions: 'ro'
     auto_mount:  'yes'
-  when: not lookup('pipe', ssh_root_conn + ' grep ^' + install.ora_zips.nfs_mount.0 + '\:' + ' /etc/filesystems', errors='ignore')
+  when: 
+    - not lookup('pipe', ssh_root_conn + ' grep ^' + install.ora_zips.nfs_mount.0 + '\:' + ' /etc/filesystems', errors='ignore')
+    - install.ora_zips.ora_binary_location == 'nfs'
 
 - name: Check NFS mount point for oracle zips exists
   file:
     path:  "{{ install.ora_zips.nfs_mount.0 }}"
     state: directory
+  when:
+    - install.ora_zips.ora_binary_location == 'nfs'
 
 - name: NFS mount Oracle zip files
   ibm.power_aix.mount:
     mount_dir: "{{ install.ora_zips.nfs_mount.0 }}"
-  when: not lookup('pipe', ssh_root_conn + ' mount | grep ' + '\"' + install.ora_zips.nfs_mount.0 + ' ' + '\"', errors='ignore')
-
+  when: 
+    - not lookup('pipe', ssh_root_conn + ' mount | grep ' + '\"' + install.ora_zips.nfs_mount.0 + ' ' + '\"', errors='ignore')
+    - install.ora_zips.ora_binary_location == 'nfs'
 - name: Template out vip_ping.sh
   template:
     src:  ./templates/vip_ping.sh.j2
@@ -224,19 +233,22 @@
     src:  templates/prep_grid_install.sh.j2
     dest: "{{ scripts_dir }}/prep_grid_install.sh"
     mode: '755'
-  when: inventory_hostname == first_host
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'nfs'
 
 - name: Run prep_grid_install.sh
   command:
     cmd:   ./prep_grid_install.sh
     chdir: "{{ scripts_dir }}"
-  when: inventory_hostname == first_host
+  when: 
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'nfs'
   register: prep_grid_install_out
   become: yes
   become_user: "{{ global.grid_owner }}"
   become_method: su
   changed_when: prep_grid_install_out.stdout is search('changed')
-
 
 - name: Remove ru version decimal point
   set_fact:
@@ -244,6 +256,16 @@
   when:
     - install.ora_zips.ru_version | default(false)
 
+- name: Default ru version if not defined
+  set_fact:
+    ru_version_without_decimal: 193
+  when: install.ora_zips.ru_version is not defined or install.ora_zips.ru_version | default == '' or install.ora_zips.ru_version is none
+
+
+- name: Run prep_grid_install_local_remote
+  include_tasks: ../../install/tasks/prep_grid_install_local_remote.yml
+  when:
+    - install.ora_zips.ora_binary_location in ['local','remote']
 
 - name: Template out gen_grid_rsp.pl
   template:
@@ -265,26 +287,6 @@
   register: gen_grid_rsp_out
   changed_when: gen_grid_rsp_out.stdout is search('changed')
 
-
-- name: Template out myruncluvfy.sh
-  template:
-    src:  templates/myruncluvfy.sh.j2
-    dest: "{{ scripts_dir }}/myruncluvfy.sh"
-    mode: '755'
-  when: inventory_hostname == first_host
-
-- name: Run myruncluvfy.sh
-  command:
-    cmd: "./myruncluvfy.sh"
-    chdir: "{{ scripts_dir }}"
-  register: myruncluvfy_out
-  when:
-    - inventory_hostname == first_host
-    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
-  become: yes
-  become_user: "{{ global.grid_owner }}"
-  become_method: su
-  changed_when: myruncluvfy_out.stdout is search('changed')
 
 - name: Template out run_rootpre.sh
   template:
@@ -315,6 +317,15 @@
   changed_when: modify_nameserver_entries_out.stdout is search('changed')
   when: lookup('pipe', 'ssh root@' + first_host + ' ' + '\'' + 'cd ' + done_dir + '; ls | egrep -c "db_install_done|grid_install_done"' + '\'' , errors='ignore') != "2"
 
+- name: Run myruncluvfy task
+  include_tasks: ../../install/tasks/myruncluvfy.yml
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.cluvfy_subdir is defined
+    - install.ora_zips.cluvfy_subdir | default('', true) != ''
+    - install.ora_zips.cluvfy_zip is defined
+    - install.ora_zips.cluvfy_zip | default('', true) != ''
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
 
 - name: Template out grid_install.sh
   template:
@@ -472,27 +483,27 @@
     src: templates/prep_db_install.sh.j2
     dest: "{{ scripts_dir }}/prep_db_install.sh"
     mode: '755'
-  when: inventory_hostname == first_host
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'nfs'
 
 - name: Create db_home directory with oracle:oinstall ownership
   file:
     path: "{{ config.db_home | flatten | list | join ('/')}}"
-    owner: oracle
-    group: oinstall
+    owner: "{{global.db_owner}}"
+    group: "{{global.db_pgroup}}"
     mode: "0775"
     state: directory
-  become: true
   when:
     - not config.fs.acfs_flag
 
 - name: Create db_base directory with oracle:oinstall ownership
   file:
     path: "{{ config.db_base | flatten | list | join ('/')}}"
-    owner: oracle
-    group: oinstall
+    owner: "{{global.db_owner}}"
+    group: "{{global.db_pgroup}}"
     mode: "0775"
     state: directory
-  become: true
 
 
 
@@ -504,7 +515,9 @@
   become_user: "{{ global.db_owner }}"
   become_method: su
   register: prep_db_install_out
-  when: inventory_hostname == first_host
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'nfs'
   changed_when: prep_db_install_out.stdout is search('changed')
   failed_when:  prep_db_install_out.stderr | regex_search('error|fail|not found', ignorecase=True)
 
@@ -513,6 +526,14 @@
 - name: Print captured output
   debug:
     var: prep_db_install_out.stdout
+
+- name: Run prep_db_install_local_remote
+  include_tasks: ../../install/tasks/prep_db_install_local_remote.yml
+  when:
+    - install.ora_zips.ora_binary_location in ['local','remote']
+
+
+
 
 - name: Template out gen_db_rsp.pl
   template:

@@ -1,0 +1,49 @@
+#!/usr/bin/ksh93
+
+# Copyright (c) IBM Corporation 2021
+
+# This script performs root.sh install on first node 
+
+# Idempotent: yes
+
+if [ ! -f ./helper.sh ]
+then
+    echo "$(basename $0): helper.sh not found in $(pwd)"
+    exit 1
+fi
+
+. ./helper.sh
+
+
+################################################################################
+#                                                                              #
+# Main                                                                         #
+#                                                                              #
+################################################################################
+
+
+
+grid_home="{{ config.grid_home | flatten | list | join ('/') }}"
+
+
+
+# Change to the grid_home directory
+cd "$grid_home" || { echo "Failed to change directory to $grid_home"; exit 1; }
+
+# Run the root.sh script and log the output
+if [ -f "root.sh" ]; then
+    echo "Running root.sh on $grid_home..."
+    sh root.sh 
+    if [ $? -eq 0 ]; then
+        echo "Successfully executed root.sh."
+    else
+        echo "root.sh execution failed."
+        exit 1
+    fi
+else
+    echo "root.sh not found in $grid_home."
+    exit 1
+fi
+
+# Exit the script
+exit 0

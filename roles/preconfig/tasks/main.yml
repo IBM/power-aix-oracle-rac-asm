@@ -43,6 +43,8 @@
   delegate_to: localhost
   changed_when: False
   when: inventory_hostname == first_host
+  vars:
+    ansible_python_interpreter: /usr/bin/python
 
 - name: Change timezone
   command: "/usr/bin/chtz {{ preconfig.tz }}"

@@ -40,7 +40,7 @@
   raw:  /usr/bin/rm -f ./roles/bootstrap/files/linux_ssh_passwordless.exp
   delegate_to: localhost
   when: inventory_hostname == first_host
-
+  
 - name: Template out linux_ssh_passwordless.exp
   template:
     src:   templates/linux_ssh_passwordless.exp.j2
@@ -48,12 +48,16 @@
     mode:  '600'
   delegate_to: localhost
   when: inventory_hostname == first_host
+  vars:
+    ansible_python_interpreter: /usr/bin/python
 
 - name: Run linux_ssh_passwordless.exp
   raw: expect ./roles/bootstrap/files/linux_ssh_passwordless.exp {{ inventory_hostname }}
   register: linux_ssh_passwordless_out
   changed_when: "'already exist' not in linux_ssh_passwordless_out.stdout"
   delegate_to: localhost
+  vars:
+    ansible_python_interpreter: /usr/bin/python
 
 - name: Add nameserver entries to /etc/resolv.conf
   raw: |
@@ -322,6 +326,5 @@
   #- include_tasks: yum_python.yml
   #  when: not aix73
 - include_tasks: dnf_install.yml
-  #when: aix73
 
 

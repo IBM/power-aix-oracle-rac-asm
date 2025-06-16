@@ -46,11 +46,6 @@ else
     exit 0
 fi
 
-# Clean up temporary files
-rm -f "${done_dir}/nslookup_tmp.txt"
-rm -f "${done_dir}/ping_tmp_"*.txt
-
-
 
 # Exit with 0 if success_flag is set, otherwise exit with 1
 if [[ $success_flag -eq 1 ]]; then
@@ -61,6 +56,10 @@ else
     exit 1
 fi
 
+
+# Clean up temporary files
+rm -f "${done_dir}/nslookup_tmp.txt"
+rm -f "${done_dir}/ping_tmp_"*.txt
 
 # Loop through each value and extract the part after colon
 for node in $nodes; do

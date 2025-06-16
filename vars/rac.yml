@@ -530,7 +530,7 @@ install:
     
     # Configuration for running Oracle Cluster Verification Utility (CluVFY) on AIX systems:
     # - 'cluvfy_subdir' specifies the location where CluVFY binary is located.
-    # - 'cluvfy_zip' is the name of the zip package.
+    # - 'cluvfy_zip' is the name of the zip package. Download latest Cluvfy(CUV) from Oracle Support site MoS Patch#30839369
     # - If either of these variables is left empty, CluVFY execution will be skipped during the deployment. 
     cluvfy_subdir:  "oracle"
     cluvfy_zip:     "cvupack_aix_7_ppc64.zip"

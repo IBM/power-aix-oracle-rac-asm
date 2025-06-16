@@ -19,6 +19,8 @@ global:
   grid_pgroup: &grid_pgroup "oinstall"
   db_owner:    &db_owner    "oracle"
   db_pgroup:   &db_pgroup   "oinstall"
+  db_asmadmingroup: &db_asmadmingroup  "asmadmin"
+  db_asmdbagroup: &db_asmdbagroup  "asmdba"
   # db_pgroup is the primary group for database user, it should match
   # config.grid_rsp.install.asm.OSASM
   # grid_pgroup is the primary group for grid user
@@ -185,7 +187,7 @@ config:
     #dummyvg,    '64',      'big',     ['hdisk10', 'hdisk11'], 'clear_pvids', 'zero_disks'
 #    *oravg,     '256',      "big",     ['hdisk1', 'hdisk2'], 'clear_pvids', 'zero_disks'
 #    *oravg,     '256',      "big",     ['hdisk1', 'hdisk2'], '', 'zero_disks'
-    *oravg,     '256',      "big",     ['hdisk1', 'hdisk2'], 'clear_pvids',  'zero_disks'
+    *oravg,     '256',      "big",     ['hdisk2'], 'clear_pvids',  'zero_disks'
   ]
 
   fs:
@@ -206,7 +208,7 @@ config:
     # mountpoint   size    volgroup
     # ----------   ----    --------
     # "dummyfs'    "50G",  'dummyvg'
-    *ofa_fs,       "120G",  *oravg,
+    *ofa_fs,       "150G",  *oravg,
   ]
 
   # The following vars are of list type.
@@ -281,7 +283,7 @@ config:
       shell:        "/usr/bin/ksh"
       capabilities: "CAP_BYPASS_RAC_VMM,CAP_PROPAGATE,CAP_NUMA_ATTACH"
       # root password won't be changed
-      password:       "XXXXYYYYZZZZ"
+      password:       "{{ global.root_password }}" 
       # VNC truncates password to 8 chars
       #vnc_passwd:   "vncpass"
       # Oracle Doc ID 1587357.1 recommendation
@@ -326,7 +328,7 @@ config:
 
   # !!! update !!!
   # Specify the cluster domain if exists
-  cluster_domain: 
+  cluster_domain: "example.com"
 
   # !!! update !!!
   networks:
@@ -353,13 +355,12 @@ config:
 
      - host: "node1.example.com"
        ora_pub:  "node1       en1 192.168.10.91 255.255.252.0"
-       ora_pvt1: "node1-priv1   en2 10.10.10.93  255.255.255.0"
-       ora_pvt2: "node1-priv2   en3 10.10.20.93  255.255.255.0"
+       ora_pvt1: "node1-priv1   en2 10.10.10.93  255.255.255.0" 
+       ora_pvt2: "node1-priv2   en3 10.10.20.93  255.255.255.0" 
      - host: "node2.example.com"
        ora_pub:  "node2       en1 192.168.10.92 255.255.252.0"
        ora_pvt1: "node2-priv1   en2 10.10.10.94  255.255.255.0"
        ora_pvt2: "node2-priv2   en3 10.10.20.94  255.255.255.0"
-
 
 
   # These are the entries that will be inserted in /etc/hosts.
@@ -395,7 +396,8 @@ config:
        # Private IP addresses for private network interface 2:
        '10.10.20.93',  'node1-priv2',                [ '', ],
        '10.10.20.94',  'node2-priv2',                [ '', ],
-    ]
+ 
+   ]
 
   # Define hdisks for various ASM disk groups 
   asmdisks:
@@ -439,10 +441,10 @@ config:
       #
       # DG Name  New Prefix      Redundancy  hdisk numbers       [new disk numbers] [clear_pvids] [zero_disks]
       #--------  --------------  ----------  ------------------ ------------------- ------------- ------------
-      - ["OCRVOTE1","ASMOCRVOTE", "EXTERNAL",         "23 24 25 26",            "23 24 25 26",     "clear_pvids", "zero_disks"]
-      - ["GIMR1",   "ASMGIMR",    "EXTERNAL",         "15 16",            "15 16",     "clear_pvids", "zero_disks"]
-      - ["ACFS",   "ASMACFS",    "EXTERNAL",         "20 21",            "20 21",     "clear_pvids", "zero_disks"]
-      - ["DATA1",  "ASMDATA",    "EXTERNAL",         "12 13",            "12 13",     "clear_pvids", "zero_disks"]
+      - ["OCRVOTE1","ASMOCRVOTE", "EXTERNAL",         "3 4",            "1 2",     "clear_pvids", "zero_disks"]
+      - ["GIMR1",   "ASMGIMR",    "EXTERNAL",         "5",            "1",     "clear_pvids", "zero_disks"]
+ #     - ["ACFS",   "ASMACFS",    "EXTERNAL",         "20 21",            "20 21",     "clear_pvids", "zero_disks"]
+      - ["DATA1",  "ASMDATA",    "EXTERNAL",         "6",            "1",     "clear_pvids", "zero_disks"]
 #      - ["DATA2",  "",           "EXTERNAL", "16 17 18 19",      "",                "clear_pvids", "zero_disks"]
 
   dsh:
@@ -469,7 +471,8 @@ install:
 ###############################################################################
   # If you want to ignore known prechecks failures, you can the set flag "use_ignore_prechecks" to true 
   # so that the oracle installer will ignore the prechecks during installation
-  use_ignore_prechecks: false 
+  use_ignore_prechecks: false
+  # If you want RDBMS home on ACFS filesystem update below variables 
   asm_acfs:
     # group_name should match DG Name defined in config.asmdisks.diskgroups
     group_name:     "ACFS"
@@ -493,44 +496,66 @@ install:
     #           -----------   ----------    --------------
     nfs_mount: [ '/repos',     '/repos',     '9.40.16.1', ]
 
+    # binary location can be remote|local|nfs
+    # remote : Ansible Controller location 
+    # local: Local location of Target Hosts
+    # nfs: Network File system location
 
+    ora_binary_location: nfs
+    # If binary location is remote or local, set remote_local_mount to path of binaries 
+    remote_local_mount: /stage 
+
+    # Below are the NFS,REMOTE,LOCAL binary locations
     # !!! update !!!
-    opatch_subdir: "images/oracle/opatch"
+    opatch_subdir: "oracle"
     opatch_zips:
-      v12_2_0_1_44: &v12_2_0_1_44 "12.2.0.1.44/p6880880_121010_AIX64-5L.zip"   
+      v12_2_0_1_46: &v12_2_0_1_46 "p6880880_190000_AIX64-5L.zip"   
       v12_2_0_1_42: &v12_2_0_1_42 "12.2.0.1.42/opatch-12.2.0.1.42_p6880880_190000_AIX64-5L.zip"
       v12_2_0_1_41: &v12_2_0_1_41 "12.2.0.1.41/opatch-12.2.0.1.41_p6880880_210000_AIX64-5L.zip"
+      v12_2_0_1_40: &v12_2_0_1_40 "12.2.0.1.40/p6880880_190000_AIX64-5L.zip"
+      v12_2_0_1_39: &v12_2_0_1_39 "p6880880_190000_AIX64-5L.zip"
       v12_2_0_1_36: &v12_2_0_1_36 "12.2.0.1.36/p6880880_210000_AIX64-5L.zip"
       v12_2_0_1_32: &v12_2_0_1_32 "OPatch_12.2.0.1.32.zip"
     #  v12_2_0_1_27: &v12_2_0_1_27 "12.2.0.1.27/p6880880_122010_AIX64-5L.zip"
      # v12_2_0_1_25: &v12_2_0_1_25 "12.2.0.1.25/p6880880_122010_AIX64-5L.zip"
       # If "latest" is not set or doesn't exist, the OPATCH that comes
       # with Grid will be used.
-      latest:       *v12_2_0_1_44
+      latest:       *v12_2_0_1_46
 
     # Oracle 19c base release zips
     # !!! update !!!
-    base_subdir:  "images/oracle/19c"
+    base_subdir:  "oracle"
     grid19c_zip:  "V982588-01_193000_grid.zip"
     db19c_zip:    "V982583-01_193000_db.zip"
+    
+    # Configuration for running Oracle Cluster Verification Utility (CluVFY) on AIX systems:
+    # - 'cluvfy_subdir' specifies the location where CluVFY binary is located.
+    # - 'cluvfy_zip' is the name of the zip package. Download latest Cluvfy(CUV) from Oracle Support site MoS Patch#30839369
+    # - If either of these variables is left empty, CluVFY execution will be skipped during the deployment. 
+    cluvfy_subdir:  "oracle"
+    cluvfy_zip:     "cvupack_aix_7_ppc64.zip"
 
     # Oracle 19c Release Update zips
     # !!! update !!!
-    ru_subdir: "images/oracle/19c"
+    ru_subdir: "oracle/RU19.27"
     ora19c_ru8:  &ora19c_ru8  "RU19.8/p31305339_190000_AIX64-5L.zip"
     ora19c_ru10: &ora19c_ru10 "RU19.10/p32226239_190000_AIX64-5L_RU19.10.zip"
     ora19c_ru11: &ora19c_ru11 "RU19.11/p32545008_190000_AIX64-5L-RU19.11.zip"
     ora19c_ru12: &ora19c_ru12 "p32895426_190000_AIX64-5L_RU19.12.zip"
     ora19c_ru14: &ora19c_ru14 "p33509923_190000_AIX64-5L.zip"
-    ora19c_ru17: &ora19c_ru17 "RU19.17/RU19.17-p34416665_190000_AIX64-5L.zip"
-    ora19c_ru18: &ora19c_ru18 "RU19.18/p34762026_190000_AIX64-5L.zip"
+    ora19c_ru17: &ora19c_ru17 "RU19.17-p34416665_190000_AIX64-5L.zip"
+    ora19c_ru18: &ora19c_ru18 "p34762026_190000_AIX64-5L.zip"
     ora19c_ru24: &ora19c_ru24 "RU19.24/p36582629_190000_AIX64-5L_GI_RU19.24.zip"
     ora19c_ru25: &ora19c_ru25 "RU19.25/p36916690_190000_AIX64-5L_GI_RU19.25.zip"
+    ora19c_ru26: &ora19c_ru26 "p37257886_190000_AIX64-5L_GI_RU19.26.zip"
+    ora19c_ru27: &ora19c_ru27 "p37641958_190000_AIX64-5L.zip"
     # The following is the RU that will be installed, pick one from above.
     # Note, the value begins with '*', the remainder portion should match the
     # one that begins with '&'.
-    ora19c_ru: *ora19c_ru25
-    ru_version: 19.25
+    ora19c_ru: *ora19c_ru27
+    ru_version: 19.27
+
+
 # specifying the compiler details is optional
   compiler:
     base_fileset:
@@ -587,12 +612,12 @@ install:
         config:
           gpnp:
             # !!! update !!!
-            scanName: node1-scan
+            scanName: rac-scan
             scanPort: 1521
         configureGIMR: true
       asm:
-        OSASM: *db_pgroup
-        OSDBA: *db_pgroup
+        OSASM: *db_asmadmingroup
+        OSDBA: *db_asmdbagroup
         # !!! update !!!
         SYSASMPassword: *asm_sys_password
         monitorPassword: monitor
@@ -617,7 +642,7 @@ install:
         # !!! update !!!
         clusterName: orac-cluster
         # !!! update !!!
-        clusterNodes: node1:node1-vip,node2:node2-vip
+        clusterNodes: node1:node1-vip,node2:node2-vip 
 
   # Refer to <DB_HOME>/install/response/db_install.rsp for the descriptions
   # of the variables.

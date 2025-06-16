@@ -1,0 +1,190 @@
+- name: Check if db is already unzipped
+  ansible.builtin.stat:
+    path: "{{done_dir}}/db_unzipped"
+  register: db_unzipped_stat
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+
+- name: Copying oracle Single instance source files from remote to stage
+  ansible.builtin.copy:
+    src: "{{ install.ora_zips.remote_local_mount }}/{{ install.ora_zips.base_subdir }}/{{ install.ora_zips.db19c_zip }}"
+    dest: "{{ config.fs.ofa_fs }}/stage"
+    owner: "{{global.db_owner}}"
+    group: "{{global.db_pgroup}}"
+  when:
+    - inventory_hostname == first_host
+    - not db_unzipped_stat.stat.exists
+    - install.ora_zips.ora_binary_location == 'remote'
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+- name: Touch db_remote_copy file
+  ansible.builtin.command: touch "{{done_dir}}"/db_remote_copy
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not db_unzipped_stat.stat.exists
+
+- name: Check if db is already copied from remote
+  ansible.builtin.stat:
+    path: "{{done_dir}}/db_remote_copy"
+  register: db_remote_copy_stat
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not db_unzipped_stat.stat.exists
+
+
+
+- name: Extracting oracle Single instance source files from stage
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ config.fs.ofa_fs }}/stage/{{ install.ora_zips.db19c_zip }} -d {{ config.db_home | flatten | list | join ('/') }}"
+  become_user: "{{global.db_owner}}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - not db_unzipped_stat.stat.exists
+    - install.ora_zips.ora_binary_location == 'remote'
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+    - db_remote_copy_stat.stat.exists
+
+- name: Extracting oracle Single instance source files from local
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ install.ora_zips.remote_local_mount }}/{{ install.ora_zips.base_subdir }}/{{ install.ora_zips.db19c_zip }} -d {{ config.db_home | flatten | list | join ('/') }}"
+  become_user: "{{global.db_owner}}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - not db_unzipped_stat.stat.exists
+    - install.ora_zips.ora_binary_location == 'local'
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+#- name: Set permissions for the extracted oracle binary files
+#  file:
+#    path: "{{ config.db_home | flatten | list | join ('/')}}"
+#    owner: oracle
+#    group: oinstall
+#    mode: "0775"
+#    recurse: yes  # Apply recursively to all files and directories
+#  become: true
+#  when:
+#    - inventory_hostname == first_host
+#    - not db_unzipped_stat.stat.exists
+#    - install.ora_zips.ora_binary_location == 'local'
+#    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+
+#- name: Set permissions for the extracted oracle base files
+#  file:
+#    path: "{{ config.db_base | flatten | list | join ('/') }}"
+#    owner: oracle
+#    group: oinstall
+#    mode: "0775"
+#    recurse: yes  # Apply recursively to all files and directories
+#  become: true
+#  when:
+#    - inventory_hostname == first_host
+#    - not db_unzipped_stat.stat.exists
+#    - install.ora_zips.ora_binary_location == 'local'
+#    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+
+
+- name: Touch db_unzipped file
+  ansible.builtin.command: touch "{{done_dir}}"/db_unzipped
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193) and not db_unzipped_stat.stat.exists
+
+- name: Check if oracle opatch is already unzipped
+  ansible.builtin.stat:
+    path: "{{done_dir}}/db_opatch_unzipped"
+  register: db_opatch_unzipped_stat
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+- name: Check if the OPatch_bkp source directory exists
+  stat:
+    path: "{{ config.db_home | flatten | list | join ('/') }}/OPatch_bkp"
+  register: source_opatch_ora_stat
+  ignore_errors: yes
+  when: 
+    - inventory_hostname == first_host
+    - not db_opatch_unzipped_stat.stat.exists
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+- name: Move a OPatch directory from oracle home to OPatch backup
+  command: mv "{{ config.db_home | flatten | list | join ('/') }}/OPatch" "{{ config.db_home | flatten | list | join ('/') }}/OPatch_bkp"
+  when: 
+    - inventory_hostname == first_host
+    - not db_opatch_unzipped_stat.stat.exists
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+    - not source_opatch_ora_stat.stat.exists
+
+- name: Check if the OPatch backup folder exists
+  ansible.builtin.stat:
+    path: "{{ config.db_home | flatten | list | join ('/') }}/OPatch_bkp"
+  register: folder_check
+  when: 
+    - inventory_hostname == first_host
+    - not db_opatch_unzipped_stat.stat.exists
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+
+- name: Extracting OPatch source files from remote to oracle home
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ config.fs.ofa_fs }}/stage/{{ install.ora_zips.opatch_zips.latest }} -d {{ config.db_home | flatten | list | join ('/') }}"
+  become_user: "{{global.db_owner}}"
+  become: yes
+  become_method: su
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false)
+    - install.ora_zips.ora_binary_location == 'remote'
+    - ru_version_without_decimal | int != 193
+    - not db_opatch_unzipped_stat.stat.exists
+    - opatch_remote_copy_stat.stat.exists
+
+
+- name: copying OPatch source files from local to oracle home
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ install.ora_zips.remote_local_mount }}/{{ install.ora_zips.opatch_subdir }}/{{ install.ora_zips.opatch_zips.latest }} -d {{ config.db_home | flatten | list | join ('/') }}"
+  become_user: "{{global.db_owner}}"
+  become: yes
+  become_method: su
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false)
+    - install.ora_zips.ora_binary_location == 'local'
+    - ru_version_without_decimal | int != 193
+    - not db_opatch_unzipped_stat.stat.exists
+
+#- name: changing ownership to {{config.db_home | flatten | list | join ('/')}}/OPatch
+#  file:
+#    path: "{{ config.db_home | flatten | list | join ('/') }}/OPatch"
+#    state: directory
+#    recurse: yes
+#    owner: "{{global.db_owner}}"
+#    group: "{{global.db_pgroup}}"
+#    mode: '0774'
+#  when:
+#    - inventory_hostname == first_host
+#    - install.ora_zips.ru_version | default(false)
+#    - install.ora_zips.ora_binary_location == 'local'
+#    - ru_version_without_decimal | int != 193
+#    - not db_opatch_unzipped_stat.stat.exists
+
+
+- name: Touch db_opatch_unzipped file
+  ansible.builtin.command: touch "{{done_dir}}"/db_opatch_unzipped
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193) and not db_opatch_unzipped_stat.stat.exists
+
+

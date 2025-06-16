@@ -5,7 +5,7 @@
     mode: '755'
   when:
     - inventory_hostname == first_host
-
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
 
 - name: Template out gen_grid_rsp_1918_plus.pl.j2
   template:
@@ -14,6 +14,7 @@
     mode: '700'
   when:
     - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
 
 - name: Run gen_grid_rsp_1918_plus.pl
   command:
@@ -21,6 +22,7 @@
     chdir: "{{ scripts_dir }}"
   when:
     - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
   register: gen_grid_rsp_out_1918
   changed_when: gen_grid_rsp_out_1918.stdout is search('changed')
 
@@ -33,7 +35,7 @@
     mode: '755'
   when:
     - inventory_hostname == first_host
-
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
 
 - name: Run grid_install_1918_plus.sh
   command:
@@ -41,6 +43,7 @@
     chdir: "{{ scripts_dir }}"
   when:
     - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
   become: yes
   become_user: "{{ global.grid_owner }}"
   become_method: su
@@ -56,21 +59,25 @@
   when:
 
 
+- name: Template out grid_root_script.sh.j2
+  template:
+    src:  templates/grid_root_script.sh.j2
+    dest: "{{ scripts_dir }}/grid_root_script.sh"
+    mode: '755'
 
-- name: Running root.sh on first node
-  shell:
-    cmd: "{{config.grid_home | flatten | list | join ('/')}}/root.sh"
-  register: rootscript
-  become: yes
+
+- name: Execute root.sh on first node
+  command:
+    cmd:   ./grid_root_script.sh
+    chdir: "{{ scripts_dir }}"
   when:
     - inventory_hostname == first_host
 
 
-- name: Running root.sh on other nodes
-  shell:
-    cmd: "{{config.grid_home | flatten | list | join ('/')}}/root.sh"
-  register: rootscript
-  become: yes
+- name: Execute root.sh on other nodes
+  command:
+    cmd:   ./grid_root_script.sh
+    chdir: "{{ scripts_dir }}"
   when:
     - inventory_hostname != first_host
 

@@ -1,0 +1,343 @@
+
+- name: Check if RU is already unzipped
+  ansible.builtin.stat:
+    path: "{{done_dir}}/ru_unzipped"
+  register: ru_unzipped_stat
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+- name: Create a RU directory with specific owner
+  file:
+    path: "{{ config.fs.ofa_fs }}/RU"  # Specify the directory path
+    state: directory
+    owner: "{{global.grid_owner}}"
+    group: "{{global.grid_pgroup}}"
+    mode: "0775"
+  when:
+    - inventory_hostname == first_host  
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+    - not ru_unzipped_stat.stat.exists
+
+
+- name: Create a stage directory with specific owner
+  file:
+    path: "{{ config.fs.ofa_fs }}/stage"  # Specify the directory path
+    state: directory
+    owner: "{{global.grid_owner}}"
+    group: "{{global.grid_pgroup}}"
+    mode: "0775"
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+
+
+- name: Copying RU source files from remote to stage
+  ansible.builtin.copy:
+    src: "{{ install.ora_zips.remote_local_mount }}/{{ install.ora_zips.ru_subdir }}/{{ install.ora_zips.ora19c_ru }}"
+    dest: "{{ config.fs.ofa_fs }}/stage"
+    owner: "{{global.grid_owner}}"
+    group: "{{global.grid_pgroup}}"
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false)
+    - (ru_version_without_decimal | int != 193)
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not ru_unzipped_stat.stat.exists
+
+- name: Touch ru_remote_copy file
+  ansible.builtin.command: touch "{{done_dir}}"/ru_remote_copy
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193) and not ru_unzipped_stat.stat.exists
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not ru_unzipped_stat.stat.exists
+
+- name: Check if RU is already copied from remote
+  ansible.builtin.stat:
+    path: "{{done_dir}}/ru_remote_copy"
+  register: ru_remote_copy_stat
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not ru_unzipped_stat.stat.exists
+
+- name: Extracting RU source files from stage
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ config.fs.ofa_fs }}/stage/{{ install.ora_zips.ora19c_ru }} -d {{ config.fs.ofa_fs }}/RU"
+  become_user: "{{ global.grid_owner }}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false)
+    - (ru_version_without_decimal | int != 193)
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not ru_unzipped_stat.stat.exists
+    - ru_remote_copy_stat.stat.exists
+
+- name: Extracting RU source files from local
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ install.ora_zips.remote_local_mount }}/{{ install.ora_zips.ru_subdir }}/{{ install.ora_zips.ora19c_ru }} -d {{ config.fs.ofa_fs }}/RU"
+  become_user: "{{ global.grid_owner }}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false)
+    - install.ora_zips.ora_binary_location == 'local'
+    - (ru_version_without_decimal | int != 193)
+    - not ru_unzipped_stat.stat.exists
+
+
+- name: Touch ru_unzipped file
+  ansible.builtin.command: touch "{{done_dir}}"/ru_unzipped
+  when: 
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193) and not ru_unzipped_stat.stat.exists
+
+
+
+- name: Check if grid is already unzipped
+  ansible.builtin.stat:
+    path: "{{done_dir}}/grid_unzipped"
+  register: grid_unzipped_stat
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+
+
+- name: Create grid_home directory with grid:oinstall ownership
+  file:
+    path: "{{ config.grid_home | flatten | list | join ('/') }}"
+    owner: "{{global.grid_owner}}"
+    group: "{{global.grid_pgroup}}"
+    mode: "0775"
+    state: directory
+  when:
+    - inventory_hostname == first_host    
+    - not grid_unzipped_stat.stat.exists
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+- name: Create grid_base directory with grid:oinstall ownership
+  file:
+    path: "{{ config.grid_base | flatten | list | join ('/') }}"
+    owner: "{{global.grid_owner}}"
+    group: "{{global.grid_pgroup}}"
+    mode: "0775"
+    state: directory
+  when:
+    - inventory_hostname == first_host
+    - not grid_unzipped_stat.stat.exists
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+
+- name: Copying oracle grid source files from remote to stage
+  ansible.builtin.copy:
+    src: "{{ install.ora_zips.remote_local_mount }}/{{ install.ora_zips.base_subdir }}/{{ install.ora_zips.grid19c_zip }}"
+    dest: "{{ config.fs.ofa_fs }}/stage"
+    owner: "{{global.grid_owner}}"
+    group: "{{global.grid_pgroup}}"
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not grid_unzipped_stat.stat.exists
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+
+
+- name: Touch grid_remote_copy file
+  ansible.builtin.command: touch "{{done_dir}}"/grid_remote_copy
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193) and not ru_unzipped_stat.stat.exists
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not grid_unzipped_stat.stat.exists
+
+- name: Check if grid is already copied from remote
+  ansible.builtin.stat:
+    path: "{{done_dir}}/grid_remote_copy"
+  register: grid_remote_copy_stat
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not grid_unzipped_stat.stat.exists
+
+
+
+- name: Extracting oracle grid source files from stage
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ config.fs.ofa_fs }}/stage/{{ install.ora_zips.grid19c_zip }} -d {{ config.grid_home | flatten | list | join ('/') }}"
+  become_user: "{{ global.grid_owner }}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not grid_unzipped_stat.stat.exists
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+    - grid_remote_copy_stat.stat.exists
+
+- name: Extracting oracle grid source files from local
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ install.ora_zips.remote_local_mount }}/{{ install.ora_zips.base_subdir }}/{{ install.ora_zips.grid19c_zip }} -d {{ config.grid_home | flatten | list | join ('/') }}"
+  become_user: "{{ global.grid_owner }}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'local'
+    - not grid_unzipped_stat.stat.exists
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+
+#- name: Set permissions for the extracted oracle grid files
+ # file:
+  #  path: "{{ config.grid_home | flatten | list | join ('/') }}"
+   # owner: grid
+   # group: oinstall
+   # mode: "0775"
+   # recurse: yes  # Apply recursively to all files and directories
+  #become: true
+  #when:
+   # - inventory_hostname == first_host
+   # - install.ora_zips.ora_binary_location == 'local'
+   # - not grid_unzipped_stat.stat.exists
+   # - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+#- name: Set permissions for grid_base directory with grid:oinstall ownership
+#  file:
+#    path: "{{ config.grid_base | flatten | list | join ('/') }}"
+#    owner: grid
+#    group: oinstall
+#    mode: "0775"
+#    recurse: yes  # Apply recursively to all files and directories
+#  become: true
+#  when:
+#    - inventory_hostname == first_host
+#    - install.ora_zips.ora_binary_location == 'local'
+#    - not grid_unzipped_stat.stat.exists
+#    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+
+
+
+- name: Touch grid_unzipped file
+  ansible.builtin.command: touch "{{done_dir}}"/grid_unzipped
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193) and not grid_unzipped_stat.stat.exists
+
+- name: Check if grid opatch is already unzipped
+  ansible.builtin.stat:
+    path: "{{done_dir}}/grid_opatch_unzipped"
+  register: grid_opatch_unzipped_stat
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+
+
+
+- name: Check if the OPatch_bkp source directory exists
+  stat:
+    path: "{{ config.grid_home | flatten | list | join ('/') }}/OPatch_bkp"
+  register: source_opatch_dir_stat
+  ignore_errors: yes
+  when: 
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+    - not grid_opatch_unzipped_stat.stat.exists
+
+- name: Move a OPatch directory from grid home to OPatch backup
+  command: mv "{{ config.grid_home | flatten | list | join ('/') }}/OPatch" "{{ config.grid_home | flatten | list | join ('/') }}/OPatch_bkp"
+  when: 
+    - inventory_hostname == first_host
+    - not grid_opatch_unzipped_stat.stat.exists
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193) and not source_opatch_dir_stat.stat.exists
+
+- name: Copying OPatch source files from remote to stage
+  ansible.builtin.copy:
+    src: "{{ install.ora_zips.remote_local_mount }}/{{ install.ora_zips.opatch_subdir }}/{{ install.ora_zips.opatch_zips.latest }}"
+    dest: "{{ config.fs.ofa_fs }}/stage"
+    owner: "{{global.grid_owner}}"
+    group: "{{global.grid_pgroup}}"
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false)
+    - ru_version_without_decimal | int != 193
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not grid_opatch_unzipped_stat.stat.exists
+
+
+- name: Touch opatch_remote_copy file
+  ansible.builtin.command: touch "{{done_dir}}"/opatch_remote_copy
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193) and not ru_unzipped_stat.stat.exists
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not grid_opatch_unzipped_stat.stat.exists
+
+- name: Check if opatch is already copied from remote
+  ansible.builtin.stat:
+    path: "{{done_dir}}/opatch_remote_copy"
+  register: opatch_remote_copy_stat
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193)
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not grid_opatch_unzipped_stat.stat.exists
+
+
+- name: Extracting OPatch source files from remote to Grid home
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ config.fs.ofa_fs }}/stage/{{ install.ora_zips.opatch_zips.latest }} -d {{ config.grid_home | flatten | list | join ('/') }}"
+  become_user: "{{ global.grid_owner }}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false)
+    - ru_version_without_decimal | int != 193
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not grid_opatch_unzipped_stat.stat.exists
+    - opatch_remote_copy_stat.stat.exists
+
+- name: copying OPatch source files from local to Grid home
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ install.ora_zips.remote_local_mount }}/{{ install.ora_zips.opatch_subdir }}/{{ install.ora_zips.opatch_zips.latest }} -d {{ config.grid_home | flatten | list | join ('/') }}"
+  become_user: "{{ global.grid_owner }}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false)
+    - install.ora_zips.ora_binary_location == 'local'
+    - ru_version_without_decimal | int != 193
+    - not grid_opatch_unzipped_stat.stat.exists
+
+
+#- name: changing ownership to {{config.grid_home | flatten | list | join ('/')}}/OPatch
+#  file:
+#    path: "{{ config.grid_home | flatten | list | join ('/') }}/OPatch"
+#    state: directory
+#    recurse: yes
+#    owner: "{{global.grid_owner}}"
+#    group: "{{global.grid_pgroup}}"
+#    mode: '0774'
+#  when:
+#    - inventory_hostname == first_host
+#    - install.ora_zips.ru_version | default(false)
+#    - install.ora_zips.ora_binary_location in ['local','remote']
+#    - ru_version_without_decimal | int != 193
+#    - not grid_opatch_unzipped_stat.stat.exists
+
+- name: Touch grid_opatch_unzipped file
+  ansible.builtin.command: touch "{{done_dir}}"/grid_opatch_unzipped
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193) and not grid_opatch_unzipped_stat.stat.exists
+

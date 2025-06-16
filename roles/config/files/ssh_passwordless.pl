@@ -95,9 +95,9 @@ sub get_src_keys {
   }
 
   for $h (@hosts) {
-     # In Power/VS, this file is missing, so generate it
+     # In Power/VS, this file is missing or in zero size, so generate it
      if ("$key_file" eq "/etc/ssh/ssh_host_ecdsa_key.pub") {
-       $status = `ssh root\@$h "[[ -f $key_file ]] && echo "Exists" || echo "not found""`; chomp $status;
+       $status = `ssh root\@$h "[[ -s $key_file ]] && echo "Exists" || echo "not found""`; chomp $status;
        if ($status =~ "not found") {
          `ssh root\@$h '/usr/bin/ssh-keyscan -H $h 2>/dev/null | \
                        grep ssh-rsa | \

@@ -17,7 +17,7 @@ fi
 
 grid_home="{{ config.grid_home | flatten | list | join ('/') }}"
 nodelist="{{ rac_nodes | trim | regex_replace(' ', ',') }}"
-
+cluvfy_home="{{ config.fs.ofa_fs }}/cluvfy_stage"
   #+ make sure this script is running as this user.
 check_user_is "{{ global.grid_owner }}"
 
@@ -31,7 +31,7 @@ log="{{ done_dir }}/myruncluvfy.out"
 runit=0
 
 if [ -f $log ]; then
-  if grep '...FAILED' $log | egrep -v 'resolv.conf Integrity|NIS name service|User Equivalence'; then
+  if grep -e '...FAILED' -e 'PRCZ-2006' $log | egrep -v 'resolv.conf Integrity|NIS name service|User Equivalence'; then
     # Failed last time
     runit=1
   else
@@ -43,8 +43,11 @@ fi
 
 
 if [ $runit -eq 1 ]; then
-  cd $grid_home
-  ./runcluvfy.sh stage -pre crsinst -n $nodelist -verbose > $log 2>&1
+  cd $cluvfy_home/bin
+#  ./cluvfy stage -pre crsinst -n $nodelist -verbose >> $log 2>&1
+  ./cluvfy stage -pre crsinst -n $nodelist -verbose -method root > $log 2>&1 << EOF
+{{global.root_password}}
+EOF
 
   if grep '...FAILED' $log | egrep -v 'resolv.conf Integrity|NIS name service|User Equivalence'; then
     RES=-1
@@ -53,6 +56,15 @@ if [ $runit -eq 1 ]; then
   fi
   error_if_non_zero $RES "runcluvfy_ext.sh changed (failed)"
   echo "runcluvfy_ext.sh changed (completed successlly)."
+has_prcz=$(grep -qi 'PRCZ-2006' "$log" && echo "yes" || echo "no")
+has_algo=$(grep -qi 'Algorithm Negotiation Fail' "$log" && echo "yes" || echo "no")
+
+# Show message if Algorithm Negotiation Fail is found (with or without PRCZ-2006)
+if [[ $has_algo == "yes" ]]; then
+  echo "\nDetected SSH connection failure: PRCZ-2006 and Algorithm Negotiation Fail. If you ignore this error there is a chance of failure during remote copy phase or during RDBMS installation. To avoid it follow the workaround mentioned in Oracle Doc ID 2982829.1 and you can revert workaround after installation. For more info Refer to readme troubleshooting section." 
+exit 1
 fi
+fi
+
 
 exit 0

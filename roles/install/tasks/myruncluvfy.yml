@@ -1,0 +1,135 @@
+
+- name: Check if cluvfy is already unzipped
+  ansible.builtin.stat:
+    path: "{{done_dir}}/cluvfy_unzipped"
+  register: cluvfy_unzipped_stat
+  when:
+    - inventory_hostname == first_host
+
+- name: Create a cluvfy stage directory with specific owner
+  file:
+    path: "{{ config.fs.ofa_fs }}/cluvfy_stage"  # Specify the directory path
+    state: directory
+    owner: "{{global.grid_owner}}"
+    group: "{{global.grid_pgroup}}"
+    mode: "0775"
+  when:
+    - inventory_hostname == first_host  
+    - not cluvfy_unzipped_stat.stat.exists
+  become: yes
+  become_user: "{{ global.grid_owner }}"
+  become_method: su
+
+
+- name: Copying cluvfy files from remote to stage
+  ansible.builtin.copy:
+    src: "{{ install.ora_zips.remote_local_mount }}/{{ install.ora_zips.cluvfy_subdir }}/{{ install.ora_zips.cluvfy_zip }}"
+    dest: "{{ config.fs.ofa_fs }}/stage"
+    owner: "{{global.grid_owner}}"
+    group: "{{global.grid_pgroup}}"
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not cluvfy_unzipped_stat.stat.exists
+  become: yes
+  become_user: "{{ global.grid_owner }}"
+  become_method: su
+
+- name: Touch cluvfy_remote_copy file
+  ansible.builtin.command: touch "{{done_dir}}"/cluvfy_remote_copy
+  when:
+    - inventory_hostname == first_host
+    - not cluvfy_unzipped_stat.stat.exists
+    - install.ora_zips.ora_binary_location == 'remote'
+
+- name: Check if cluvfy is already copied from remote
+  ansible.builtin.stat:
+    path: "{{done_dir}}/cluvfy_remote_copy"
+  register: cluvfy_remote_copy_stat
+  when:
+    - inventory_hostname == first_host
+    - not cluvfy_unzipped_stat.stat.exists
+    - install.ora_zips.ora_binary_location == 'remote'
+
+- name: Extracting cluvfy source files from stage
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ config.fs.ofa_fs }}/stage/{{ install.ora_zips.cluvfy_zip }} -d {{ config.fs.ofa_fs }}/cluvfy_stage"
+  become_user: "{{ global.grid_owner }}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not cluvfy_unzipped_stat.stat.exists
+    - cluvfy_remote_copy_stat.stat.exists
+
+- name: Extracting cluvfy source files from local
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ install.ora_zips.remote_local_mount }}/{{ install.ora_zips.cluvfy_subdir }}/{{ install.ora_zips.cluvfy_zip }} -d {{ config.fs.ofa_fs }}/cluvfy_stage"
+  become_user: "{{ global.grid_owner }}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'local'
+    - not cluvfy_unzipped_stat.stat.exists
+
+
+- name: Extracting cluvfy source files from nfs
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ install.ora_zips.nfs_mount.0 }}/{{ install.ora_zips.cluvfy_subdir }}/{{ install.ora_zips.cluvfy_zip }} -d {{ config.fs.ofa_fs }}/cluvfy_stage"
+  become_user: "{{ global.grid_owner }}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'nfs'
+    - not cluvfy_unzipped_stat.stat.exists
+
+
+- name: Touch cluvfy_unzipped file
+  ansible.builtin.command: touch "{{done_dir}}"/cluvfy_unzipped
+  when: 
+    - inventory_hostname == first_host
+    - not cluvfy_unzipped_stat.stat.exists
+
+
+- name: Template out myruncluvfy.sh
+  template:
+    src:  templates/myruncluvfy.sh.j2
+    dest: "{{ scripts_dir }}/myruncluvfy.sh"
+    mode: '755'
+  when: inventory_hostname == first_host
+
+- name: Run myruncluvfy.sh
+  command:
+    cmd: "./myruncluvfy.sh"
+    chdir: "{{ scripts_dir }}"
+  register: myruncluvfy_out
+  when:
+    - inventory_hostname == first_host
+  become: yes
+  become_user: "{{ global.grid_owner }}"
+  become_method: su
+#  failed_when: myruncluvfy_out.rc != 0
+  changed_when: myruncluvfy_out.stdout is search('changed')
+  ignore_errors: true
+#  any_errors_fatal: true
+
+- name: Fail if cluvfy failed and ignore_prechecks is 'false'. If you want to skip cluvfy failure set 'use_ignore_prechecks=true' in variable file
+  fail:
+    msg: "Cluvfy prechecks failed and 'use_ignore_prechecks' is set to 'false'"
+  when:
+    - inventory_hostname == first_host
+    - myruncluvfy_out.rc != 0
+    - install.use_ignore_prechecks | lower == "false"
+  any_errors_fatal: true
+ 
+- name: Warn if cluvfy failed but continuing due to ignore_prechecks = 'true'
+  debug:
+    msg: "Cluvfy prechecks failed, but continuing as 'use_ignore_prechecks' is set to 'true'"
+  when:
+    - inventory_hostname == first_host
+    - myruncluvfy_out.rc != 0
+    - install.use_ignore_prechecks | lower == "true"
+

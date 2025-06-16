@@ -210,7 +210,6 @@
   register: update_etc_hosts_out
   changed_when: update_etc_hosts_out.stdout is search('changed')
 
-
 - name: Create ssh keys for users
   shell:
     cmd: mkdir -p ~{{ item.key}}/.ssh; ssh-keygen -t rsa -f ~{{ item.key }}/.ssh/id_rsa -C "" -N ""; chown -R {{ item.key }}:{{ item.value.pgroup }} ~{{ item.key }}/.ssh; chmod 700 ~{{ item.key }}/.ssh/*
@@ -226,8 +225,10 @@
   register: ssh_passwordless_out
   changed_when: ssh_passwordless_out.stdout is search('changed')
   when:
+    - inventory_hostname == first_host
     - item != ""
-
+  vars:
+    ansible_python_interpreter: /usr/bin/python
 
 - name: Copy sshcheck.sh
   copy:
@@ -242,6 +243,7 @@
     chdir: "{{ scripts_dir }}"
   register: ssh_check_result_grid
 
+
 - name: Check SSH equivalence for oracle user
   command:
     cmd: "./sshcheck.sh {{ global.db_owner }} {% for host in config.networks %}{{ host.ora_pub.split()[0] }} {% endfor %}"
@@ -253,6 +255,7 @@
   fail:
     msg: "SSH check failed for grid or oracle user"
   when: (ssh_check_result_grid.stdout_lines + ssh_check_result_oracle.stdout_lines) | select('search', 'Failed') | list | length > 0
+
 
 
 - name: Run cfgmgr
@@ -331,6 +334,8 @@
   register: uplink_poll_out
   changed_when: uplink_poll_out.stdout is search('uplink poll changed')
   when: item.host == inventory_hostname 
+
+
 
 - name: Copy add_dshenv.sh
   copy:
@@ -425,7 +430,8 @@
   delegate_to: localhost
   when:
     - inventory_hostname == first_host
-
+  vars:
+    ansible_python_interpreter: /usr/bin/python
  
 - name: Template out dsks_xcheck.pl to local
   template:
@@ -435,7 +441,8 @@
   delegate_to: localhost
   when:
     - inventory_hostname == first_host
-
+  vars:
+    ansible_python_interpreter: /usr/bin/python
 - name: Run dsks_xcheck.pl on local
   command:
     cmd:   perl ./roles/config/files/dsks_xcheck.pl
@@ -445,7 +452,8 @@
     - inventory_hostname == first_host
     - not rename_setup_dsks_done
   changed_when: False
-
+  vars:
+    ansible_python_interpreter: /usr/bin/python
 - name: Copy dg_dsks_validity.sh
   copy:
     src:  "./files/dg_dsks_validity.sh"

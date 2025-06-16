@@ -357,7 +357,7 @@ config:
        ora_pub:  "node1       en1 192.168.10.91 255.255.252.0"
        ora_pvt1: "node1-priv1   en2 10.10.10.93  255.255.255.0" 
        ora_pvt2: "node1-priv2   en3 10.10.20.93  255.255.255.0" 
-     - host: "node2"
+     - host: "node2.example.com"
        ora_pub:  "node2       en1 192.168.10.92 255.255.252.0"
        ora_pvt1: "node2-priv1   en2 10.10.10.94  255.255.255.0"
        ora_pvt2: "node2-priv2   en3 10.10.20.94  255.255.255.0"

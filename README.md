@@ -3,7 +3,7 @@
 
 This repository contains ansible **power_aix_oracle_rac_asm** collection which is used for installing Oracle 19c RAC on new AIX operating system.
 
-The collection automates implementation of Oracle RAC specific requirements from setting up kernel tunables, network attributes, shared disk attributes, passwordless ssh user equivalency etc and, automates the Oracle 19c Grid and RDBMS Installations using slient method.
+The collection automates implementation of Oracle RAC specific requirements from setting up kernel tunables, network attributes, shared disk attributes, passwordless ssh user equivalency etc and, automates the Oracle 19c Grid and RDBMS Installations using silent method.
 
 ## Resources
 The detail steps are mentioned in the readme document, Please go through it before you start using the collection

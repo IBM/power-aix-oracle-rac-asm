@@ -236,6 +236,8 @@
   when:
     - inventory_hostname == first_host
     - install.ora_zips.ora_binary_location == 'nfs'
+    - not install.ora_zips.goldimage_flag
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
 
 - name: Run prep_grid_install.sh
   command:
@@ -244,6 +246,8 @@
   when: 
     - inventory_hostname == first_host
     - install.ora_zips.ora_binary_location == 'nfs'
+    - not install.ora_zips.goldimage_flag
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
   register: prep_grid_install_out
   become: yes
   become_user: "{{ global.grid_owner }}"
@@ -266,6 +270,14 @@
   include_tasks: ../../install/tasks/prep_grid_install_local_remote.yml
   when:
     - install.ora_zips.ora_binary_location in ['local','remote']
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
+    - not install.ora_zips.goldimage_flag
+
+- name: Run prep_grid_install_gold_image
+  include_tasks: ../../install/tasks/prep_grid_install_gold_image.yml
+  when:
+    - install.ora_zips.goldimage_flag
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
 
 - name: Template out gen_grid_rsp.pl
   template:
@@ -275,6 +287,8 @@
   when: 
     - inventory_hostname == first_host
     - ru_version_without_decimal | int < 1918
+    - not install.ora_zips.goldimage_flag
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
 
 
 - name: Run gen_grid_rsp.pl
@@ -284,6 +298,8 @@
   when: 
     - inventory_hostname == first_host
     - ru_version_without_decimal | int < 1918
+    - not install.ora_zips.goldimage_flag
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
   register: gen_grid_rsp_out
   changed_when: gen_grid_rsp_out.stdout is search('changed')
 
@@ -293,13 +309,17 @@
     src:  templates/run_rootpre.sh.j2
     dest: "{{ scripts_dir }}/run_rootpre.sh"
     mode: '700'
-  when: inventory_hostname == first_host
+  when: 
+    - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
 
 - name: Run run_rootpre.sh
   command:
     cmd:   ./run_rootpre.sh
     chdir: "{{ scripts_dir }}"
-  when: inventory_hostname == first_host
+  when: 
+    - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
   register: run_rootpre_out
   changed_when: run_rootpre_out.stdout is search('changed')
 
@@ -334,8 +354,10 @@
     mode: '755'
   when: 
     - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
     - install.ora_zips.ru_version | default(false)
     - ru_version_without_decimal | int < 1918
+    - not install.ora_zips.goldimage_flag
 
 - name: Run grid_install.sh
   command:
@@ -346,6 +368,7 @@
     - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
     - install.ora_zips.ru_version | default(false)
     - ru_version_without_decimal | int < 1918
+    - not install.ora_zips.goldimage_flag
   become: yes
   become_user: "{{ global.grid_owner }}"
   become_method: su
@@ -359,6 +382,13 @@
     - install.ora_zips.ru_version | default(false)
     - ru_version_without_decimal | int >= 1918
     - ru_version_without_decimal | int != 193
+    - not install.ora_zips.goldimage_flag
+
+- name: Run grid install gold image
+  include_tasks: ../../install/tasks/grid_install_goldimage.yml
+  when:
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
+    - install.ora_zips.goldimage_flag
 
 - name: Copy out check_crs_services.pl
   copy:
@@ -486,6 +516,8 @@
   when:
     - inventory_hostname == first_host
     - install.ora_zips.ora_binary_location == 'nfs'
+    - not install.ora_zips.goldimage_flag
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/db_install_done', errors='ignore')
 
 - name: Create db_home directory with oracle:oinstall ownership
   file:
@@ -518,6 +550,8 @@
   when:
     - inventory_hostname == first_host
     - install.ora_zips.ora_binary_location == 'nfs'
+    - not install.ora_zips.goldimage_flag
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/db_install_done', errors='ignore')
   changed_when: prep_db_install_out.stdout is search('changed')
   failed_when:  prep_db_install_out.stderr | regex_search('error|fail|not found', ignorecase=True)
 
@@ -531,7 +565,14 @@
   include_tasks: ../../install/tasks/prep_db_install_local_remote.yml
   when:
     - install.ora_zips.ora_binary_location in ['local','remote']
+    - not install.ora_zips.goldimage_flag
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/db_install_done', errors='ignore')
 
+- name: Run prep_db_install_gold_image
+  include_tasks: ../../install/tasks/prep_db_install_gold_image.yml
+  when:
+    - install.ora_zips.goldimage_flag
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/db_install_done', errors='ignore')
 
 
 
@@ -540,14 +581,18 @@
     src:  templates/gen_db_rsp.pl.j2
     dest: "{{ scripts_dir }}/gen_db_rsp.pl"
     mode: '755'
-  when: inventory_hostname == first_host
+  when: 
+    - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/db_install_done', errors='ignore')
 
 - name: Run gen_db_rsp.pl
   command:
     cmd:   "./gen_db_rsp.pl"
     chdir: "{{ scripts_dir }}"
   register: gen_db_rsp_out
-  when: inventory_hostname == first_host
+  when: 
+    - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/db_install_done', errors='ignore')
   changed_when: gen_db_rsp_out.stdout is search('changed')
   failed_when: gen_db_rsp_out.stderr | regex_search('error|fail', ignorecase=True)
 
@@ -560,7 +605,8 @@
     - inventory_hostname == first_host
     - install.ora_zips.ru_version | default(false)
     - ru_version_without_decimal | int < 1918
-
+    - not install.ora_zips.goldimage_flag
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/db_install_done', errors='ignore')
   
 - name: Run db_install.sh
   command:
@@ -571,6 +617,7 @@
     - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/db_install_done', errors='ignore')
     - install.ora_zips.ru_version | default(false)
     - ru_version_without_decimal | int < 1918
+    - not install.ora_zips.goldimage_flag
   become: yes
   become_user: "{{ global.db_owner }}"
   become_method: su
@@ -582,8 +629,16 @@
   include_tasks: ../../install/tasks/db_install_1918_plus.yml
   when: 
     - install.ora_zips.ru_version | default(false)
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/db_install_done', errors='ignore')
     - ru_version_without_decimal | int >= 1918
     - ru_version_without_decimal | int != 193
+    - not install.ora_zips.goldimage_flag
+
+- name: Run DB install gold image
+  include_tasks: ../../install/tasks/db_install_goldimage.yml
+  when:
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/db_install_done', errors='ignore')
+    - install.ora_zips.goldimage_flag
 
 - name: Run modify_nameserver_entries.sh - uncomment out entry(ies)
   command:

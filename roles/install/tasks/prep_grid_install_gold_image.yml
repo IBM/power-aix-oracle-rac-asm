@@ -1,0 +1,104 @@
+- name: Check if grid is already unzipped
+  ansible.builtin.stat:
+    path: "{{done_dir}}/grid_unzipped"
+  register: grid_unzipped_stat
+  when:
+    - inventory_hostname == first_host
+
+- name: Create grid_home directory with grid:oinstall ownership
+  file:
+    path: "{{ config.grid_home | flatten | list | join ('/') }}"
+    owner: "{{global.grid_owner}}"
+    group: "{{global.grid_pgroup}}"
+    mode: "0775"
+    state: directory
+  when:
+    - inventory_hostname == first_host
+    - not grid_unzipped_stat.stat.exists
+
+- name: Create grid_base directory with grid:oinstall ownership
+  file:
+    path: "{{ config.grid_base | flatten | list | join ('/') }}"
+    owner: "{{global.grid_owner}}"
+    group: "{{global.grid_pgroup}}"
+    mode: "0775"
+    state: directory
+  when:
+    - inventory_hostname == first_host
+    - not grid_unzipped_stat.stat.exists
+
+- name: Create a stage directory with specific owner
+  file:
+    path: "{{ config.fs.ofa_fs }}/stage"  # Specify the directory path
+    state: directory
+    owner: "{{global.grid_owner}}"
+    group: "{{global.grid_pgroup}}"
+    mode: "0775"
+  when:
+    - inventory_hostname == first_host
+
+- name: Copying oracle grid source files from remote to stage
+  ansible.builtin.copy:
+    src: "{{ install.ora_zips.remote_local_mount }}/{{ install.ora_zips.base_subdir }}/{{ install.ora_zips.grid19c_zip }}"
+    dest: "{{ config.fs.ofa_fs }}/stage"
+    owner: "{{global.grid_owner}}"
+    group: "{{global.grid_pgroup}}"
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not grid_unzipped_stat.stat.exists
+
+
+- name: Touch grid_remote_copy file
+  ansible.builtin.command: touch "{{done_dir}}"/grid_remote_copy
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not grid_unzipped_stat.stat.exists
+
+- name: Check if grid is already copied from remote
+  ansible.builtin.stat:
+    path: "{{done_dir}}/grid_remote_copy"
+  register: grid_remote_copy_stat
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not grid_unzipped_stat.stat.exists
+
+
+
+- name: Extracting oracle grid source files from stage
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ config.fs.ofa_fs }}/stage/{{ install.ora_zips.grid19c_zip }} -d {{ config.grid_home | flatten | list | join ('/') }}"
+  become_user: "{{ global.grid_owner }}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not grid_unzipped_stat.stat.exists
+    - grid_remote_copy_stat.stat.exists
+
+- name: Extracting oracle grid source files from local
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ install.ora_zips.remote_local_mount }}/{{ install.ora_zips.base_subdir }}/{{ install.ora_zips.grid19c_zip }} -d {{ config.grid_home | flatten | list | join ('/') }}"
+  become_user: "{{ global.grid_owner }}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'local'
+    - not grid_unzipped_stat.stat.exists
+
+
+- name: Extracting oracle grid source files from nfs
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ install.ora_zips.nfs_mount.0 }}/{{ install.ora_zips.base_subdir }}/{{ install.ora_zips.grid19c_zip }} -d {{ config.grid_home | flatten | list | join ('/') }}"
+  become_user: "{{ global.grid_owner }}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'nfs'
+    - not grid_unzipped_stat.stat.exists
+

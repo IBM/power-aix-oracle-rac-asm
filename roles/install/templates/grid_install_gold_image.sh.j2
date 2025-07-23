@@ -1,0 +1,65 @@
+#!/usr/bin/ksh93
+#!/usr/bin/expect -f
+
+# Copyright (c) IBM Corporation 2021
+
+# This script performs grid silent install along with release update using 
+# gridSetup.sh -applyRU.
+
+# Idempotent: yes
+
+if [ ! -f ./helper.sh ]
+then
+    echo "$(basename $0): helper.sh not found in $(pwd)"
+    exit 1
+fi
+
+. ./helper.sh
+
+  #+ make sure this script is running as this user.
+check_user_is "{{ global.grid_owner }}"
+
+################################################################################
+#                                                                              #
+# Main                                                                         #
+#                                                                              #
+################################################################################
+
+ password="{{ global.root_password }}"
+grid_home="{{ config.grid_home | flatten | list | join ('/') }}"
+
+
+
+
+cd $grid_home
+
+install_log="{{ done_dir }}/grid_install_goldimage.out"
+aixefixfile="/tmp/efix_IJ38518.txt"
+
+
+export SRVM_DISABLE_MTTRANS=true
+flag_ignorechecks={{ install.use_ignore_prechecks | lower }}
+if [[ $flag_ignorechecks == true ||  -f $aixefixfile ]]
+then
+echo `date` "./gridSetup.sh -silent -ignorePrereqFailure -responsefile {{ files_dir }}/grid_rsp_goldimage.rsp" >> $install_log
+$grid_home/gridSetup.sh -silent -ignorePrereqFailure -responsefile "{{ files_dir }}/grid_rsp_goldimage.rsp" <<EOF >> $install_log 2>&1
+y
+EOF
+
+else
+echo `date` "./gridSetup.sh -silent -responsefile {{ files_dir }}/grid_rsp_goldimage.rsp" >> $install_log
+$grid_home/gridSetup.sh -silent -responsefile "{{ files_dir }}/grid_rsp_goldimage.rsp" <<EOF >> $install_log 2>&1
+y
+EOF
+fi
+
+if grep -q 'Successfully Setup Software' $install_log; then
+  touch "{{ done_dir }}/grid_install_done"
+  grid_version=$($grid_home/bin/oraversion -compositeVersion)
+  echo "Grid install changed (Grid $grid_version install successfully.)"
+else
+  echo "ERROR: gridSetup.sh failed. See $install_log and gridSetupActions log on $(hostname) for details."
+  exit 1
+fi
+
+exit 0

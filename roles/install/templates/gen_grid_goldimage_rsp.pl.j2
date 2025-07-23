@@ -1,0 +1,329 @@
+#!/usr/bin/perl
+
+# Copyright (c) IBM Corporation 2021
+
+# This script generates a grid response file based on the variables
+# specified in install.grid_rsp. The response file is located in
+# files/gridsetup.rsp on the first node. This script should only be run on the
+# first node.
+#
+# Idempotent: yes
+
+sub check_ausize {
+  my $size = shift;
+  my $ok = 0;
+  for $i (1, 2, 4, 8, 16) {
+    if ($i == $size) {
+      $ok = 1;
+      last;
+    }
+  }
+  return $ok;
+}
+
+sub check_asm_redundancy {
+  my $redundancy = shift;
+  my $ok = 0;
+  for $r ("NORMAL", "EXTERNAL") {
+    if ("$redundancy" eq "$r") {
+      $ok = 1;
+      last;
+    }
+  }
+  return $ok;
+}
+
+sub check_num_cluster_nodes {
+  my $cluster_nodes = shift;
+  my $rac_nodes = "{{ rac_nodes | trim }}";
+  my $ok = 1;
+  for $n (split(/\s+/, $rac_nodes)) {
+     if ($cluster_nodes !~ /${n}:(.+)$/) {
+       $ok = 0;
+       last;
+     }
+  }
+  return $ok;
+}
+
+sub gen_disk_list {
+  my($dg_name, $prefix, $nums, $new_nums) = (@_);
+  my $disk_paths = "";
+  $prefix = ($prefix ? $prefix : "hdisk");
+  my @a_nums = (split(/\s+/, $nums));
+  my @a_new_nums = (split(/\s+/, $new_nums));
+
+  if ($n != $new_n) {
+    print "ERROR: Number of original disk numbers not equal to number of new disks numbers for $dg_name disk group in config.asmdisks.diskgroups.\n";
+    exit 1;
+  }
+  for $i (0 .. @a_nums - 1) {
+    if ("$new_nums" ne "") {
+      $disk_path = "/dev/r${prefix}$a_new_nums[$i]";
+    } else {
+      $disk_path = "/dev/r${prefix}$a_nums[$i]";
+    }
+    if ("$disk_paths"  ne "") {
+      $disk_paths .= ",$disk_path";
+    } else {
+      $disk_paths = "$disk_path";
+    }
+  }
+  return $disk_paths;
+}
+
+
+#
+# Hard-coded variables
+#
+$option                      = "CRS_CONFIG";
+$scantype                    = "LOCAL_SCAN";
+$clusterconfiguration        = "STANDALONE";
+$configureasextendedcluster  = "false";
+$configuregns                = "false";
+$autoconfigureclusternodevip = "false";
+$storageoption               = "FLEX_ASM_STORAGE";
+$diskdiscoverystring         = "/dev/r*";
+$configurerhps               = "false";
+$ignoredownnodes             = "false";
+$managementoption            = "NONE";
+$executerootscript           = "false";
+$omsport                     = "0";
+$configmethod                = "";
+
+#
+# Set variables
+#
+$diskgroupname        = "{{ install.grid_rsp.install.asm.diskGroup.name }}";
+$diskgroupausize      = "{{ install.grid_rsp.install.asm.diskGroup.AUSize }}";
+$gimrname             = "{{ install.grid_rsp.install.asm.gimrDG.name }}";
+$gimrausize           = "{{ install.grid_rsp.install.asm.gimrDG.AUSize }}";
+
+$inventory_location   = "{{ install.grid_rsp.INVENTORY_LOCATION | flatten | list | join('/') }}";
+$oracle_base          = "{{ install.grid_rsp.ORACLE_BASE | flatten | list | join('/') }}";
+$osasm                = "{{ install.grid_rsp.install.asm.OSASM }}";
+$osdba                = "{{ install.grid_rsp.install.asm.OSDBA }}";
+$sysasmpassword       = "{{ install.grid_rsp.install.asm.SYSASMPassword }}";
+$monitorpassword      = "{{ install.grid_rsp.install.asm.monitorPassword }}";
+$emadminpassword      = "{{ install.grid_rsp.install.config.emAdminPassword }}";
+$clustername          = "{{ install.grid_rsp.install.config.clusterName }}";
+$clusternodes         = "{{ install.grid_rsp.install.config.clusterNodes }}";
+$scanname             = "{{ install.grid_rsp.install.crs.config.gpnp.scanName }}";
+$scanport             = "{{ install.grid_rsp.install.crs.config.gpnp.scanPort }}";
+$diskgroup_disks      = "{%- for dg in config.asmdisks.diskgroups -%}
+                           {%- if dg.0 == install.grid_rsp.install.asm.diskGroup.name -%}
+                             {{ dg | join(',') }}
+                           {%- endif -%}
+                         {%- endfor -%}";
+$diskgroup_redundancy = "{{ install.grid_rsp.install.asm.diskGroup.redundancy }}";
+$gimr_disks           = "{%- for dg in config.asmdisks.diskgroups -%}
+                           {%- if dg.0 == install.grid_rsp.install.asm.gimrDG.name -%}
+                             {{ dg | join(',') }}
+                           {%- endif -%}
+                         {%- endfor -%}";
+$configuregimr        = "{{ install.grid_rsp.install.crs.configureGIMR | lower }}";
+$configuregimrdatadg  = "{{ install.grid_rsp.install.asm.configureGIMRDataDG | lower }}";
+$gimr_redundancy      = "{{ install.grid_rsp.install.asm.gimrDG.redundancy }}";
+$gimrausize           = "{{ install.grid_rsp.install.asm.gimrDG.AUSize }}";
+
+# Interface type value:
+# 1: PUBLIC
+# 2: PRIVATE
+# 3: DO NOT USE
+# 4: ASM
+# 5: ASM & PRIVATE
+# entry format: <enX>:<network>:<interface type>
+$net_intf_list =  "{%- for h in config.networks -%}
+                    {%- if h.host == first_host -%}
+                        {%- set ora_pub_net_and_mask  = h.ora_pub.split().2  + '/' + h.ora_pub.split().3 -%}
+                        {%- set ora_pvt1_net_and_mask = h.ora_pvt1.split().2 + '/' + h.ora_pvt1.split().3 -%}
+                        {%- set ora_pvt2_net_and_mask = h.ora_pvt2.split().2 + '/' + h.ora_pvt2.split().3 -%}
+                      {%- if h.pub is defined -%}
+                        {%- set pub_net_and_mask = h.pub.split().2 + '/' + h.pub.split().3 -%}
+{{ h.pub.split().1      + ':' + pub_net_and_mask      | ansible.utils.ipaddr('network') + ':3,' +
+   h.ora_pub.split().1  + ':' + ora_pub_net_and_mask  | ansible.utils.ipaddr('network') + ':1,' +
+   h.ora_pvt1.split().1 + ':' + ora_pvt1_net_and_mask | ansible.utils.ipaddr('network') + ':5,' +
+   h.ora_pvt2.split().1 + ':' + ora_pvt2_net_and_mask | ansible.utils.ipaddr('network') + ':5' }}
+                      {%- else -%}
+{{ h.ora_pub.split().1  + ':' + ora_pub_net_and_mask  | ansible.utils.ipaddr('network') + ':1,' +
+   h.ora_pvt1.split().1 + ':' + ora_pvt1_net_and_mask | ansible.utils.ipaddr('network') + ':5,' +
+   h.ora_pvt2.split().1 + ':' + ora_pvt2_net_and_mask | ansible.utils.ipaddr('network') + ':5' }}
+                      {%- endif -%}
+                    {%- endif -%}
+                  {%- endfor -%}";
+
+#
+# Derived vars set below if redundancy is NORMAL
+#
+$diskgroup_failuregroups = "";
+$gimrdg_failuregroups = "";
+
+if ("$diskgroup_redundancy" eq "") {
+  print "ERROR: Value in install.grid_rsp.install.asm.diskGroup.redundancy not set.\n";
+  exit 1;
+}
+
+if (check_asm_redundancy($diskgroup_redundancy) == 0) {
+  print "ERROR: The value $diskgroup_redundancy in install.grid_rsp.install.asm.diskGroup.redundancy not supported (use NORMAL or EXTERNAL).\n";
+  exit 1;
+}
+
+if ($diskgroup_disks eq "") {
+  print "ERROR: No diskgroup disks, check config.asmdisks.diskgroups and install.grid_rsp.install.asm.diskGroup.name for errors.\n";
+  exit 1; 
+}
+
+$diskgroup_disks =~ s/,$//; 
+($dg_name, $prefix, $redundancy, $nums, $new_nums) = (split(/,/, $diskgroup_disks));
+$diskgroup_disks = gen_disk_list("$dg_name", "$prefix", "$nums", "$new_nums");
+if ($diskgroup_redundancy eq "NORMAL") {
+  # When EXTERNAL redundancy is specified, DiskFailureGroupNames won't be set
+  $fg_seq = 1;
+  $diskgroup_fg_disks = "";
+  $diskgroup_failuregroups = "";
+
+  for $d (split(/,/, $diskgroup_disks)) {
+    $diskgroup_fg_disks .= "$d,ocrvote_FG$fg_seq,";
+    $diskgroup_failuregroups .= "ocrvote_FG$fg_seq,";
+    $fg_seq++;
+  }
+  chop $diskgroup_fg_disks;
+  chop $diskgroup_failuregroups;
+} else {
+  $diskgroup_fg_disks = "";
+}
+
+if (check_ausize($diskgroupausize) == 0) {
+  print "ERROR: The value $diskgroupausize in install.grid_rsp.install.asm.diskGroup.AUSize is invalid.\n";
+  exit 1;
+}
+
+if ($configuregimr =~ /true/i) {
+  if ($gimr_disks eq "") {
+    print "ERROR: NO GIMR disks found. Check config.asmdisks.diskgroups and/or install.grid_rsp.install.asm.gimrDG.name for errors.\n";
+    exit 1;
+  }
+
+  if (check_ausize($gimrausize) == 0) {
+    print "ERROR: The value $gimrausize in install.grid_rsp.install.asm.gimrDG.AUSize is invalid.\n";
+    exit 1;
+  }
+
+  if ("$gimr_redundancy" eq "") {
+    print "ERROR: Value in install.grid_rsp.install.asm.gimrDG.redundancy not set.\n";
+    exit 1;
+  }
+
+  if (check_asm_redundancy($gimr_redundancy) == 0) {
+    print "ERROR: The value $gimr_redundancy in install.grid_rsp.install.asm.gimrDG.redundancy not supported (use NORMAL or EXTERNAL).\n";
+    exit 1;
+  }
+
+  $gimr_disks =~ s/,$//; 
+  ($dg_name, $prefix, $redundancy, $nums, $new_nums) = (split(/,/, $gimr_disks));
+  $gimr_disks = gen_disk_list("$dg_name", "$prefix", "$nums", "$new_nums");
+  $gimr_fg_disks = "$gimr_disks,";
+  $gimr_fg_disks =~ s/,\//,,\//g;
+
+  if ($gimr_redundancy eq "NORMAL") {
+    # When EXTERNAL redundancy is specified, DiskFailureGroupNames won't be set
+    $fg_seq = 1;
+    $gimr_fg_disks = "";
+    for $d (split(/,/, $gimr_disks)) {
+      $gimr_fg_disks .= "$d,gimrFG_$fg_seq,";
+      $gimrdg_failuregroups .= "gimrFG_$seq,";
+      $fg_seq++;
+    }
+    chop $gimr_fg_disks;
+    chop $gimrdg_failuregroups;
+  } else {
+    $gimr_fg_disks = ""
+  }
+}
+
+if (check_num_cluster_nodes($clusternodes) == 0) {
+  print "ERROR: Incorrect number of nodes specified in install.grid_rsp.install.config.clusterNodes.\n";
+  exit 1;
+}
+
+$grid_template_rsp = "{{ config.grid_home | flatten | list | join('/') }}/install/response/gridsetup.rsp";
+$grid_rsp = "{{ files_dir }}/grid_rsp_goldimage.rsp";
+$old_grid_rsp_lines;
+$new_grid_rsp_lines;
+
+if (-f $grid_rsp) {
+  open(IN, "< $grid_rsp") or die "Failed to open $grid_rsp: $!\n";
+  while (<IN>) {
+    chomp;
+    push(@old_grid_rsp_lines, $_);
+  }
+  close IN;
+}
+
+open(IN, "< $grid_template_rsp") or die "Failed to open $grid_template_rsp: $!\n";
+while ( <IN> ) {
+  chomp;
+  if ( /\\s*#/ ) { push(@new_grid_rsp_lines, $_); next; }
+  s/$1/=$option/                  if ( /^oracle.install.option(=.*$)/ ) ;
+  s/$1/=$scantype/                if ( /^oracle.install.crs.config.scanType(=.*$)/ ) ;
+  s/$1/=$clusterconfiguration/    if ( /^oracle.install.crs.config.ClusterConfiguration(=.*$)/ ) ;
+  s/$1/=$configureasextendedcluster/  if ( /^oracle.install.crs.config.configureAsExtendedCluster(=.*$)/ ) ;
+  s/$1/=$configuregns/            if ( /^oracle.install.crs.config.gpnp.configureGNS(=.*$)/ ) ;
+  s/$1/=$autoconfigureclusternodevip/  if ( /^oracle.install.crs.config.autoConfigureClusterNodeVIP(=.*$)/ ) ;
+  s/$1/=$storageoption/           if ( /^oracle.install.crs.config.storageOption(=.*$)/ ) ;
+  s/$1/=$diskdiscoverystring/     if ( /^oracle.install.asm.diskGroup.diskDiscoveryString(=.*$)/ ) ;
+  s/$1/=$configurerhps/           if ( /^oracle.install.crs.configureRHPS(=.*$)/ ) ;
+  s/$1/=$ignoredownnodes/         if ( /^oracle.install.crs.config.ignoreDownNodes(=.*$)/ ) ;
+  s/$1/=$managementoption/        if ( /^oracle.install.config.managementOption(=.*$)/ ) ;
+  s/$1/=$omsport/                 if ( /^oracle.install.config.omsPort(=.*$)/ ) ;
+  s/$1/=$executerootscript/       if ( /^oracle.install.crs.rootconfig.executeRootScript(=.*$)/ ) ;
+  s/$1/=$emsPort/                 if ( /^oracle.install.config.emsPort(=.*$)/ ) ;
+  s/$1/=$configmethod/            if ( /^oracle.install.crs.rootconfig.configMethod(=.*$)/ ) ;
+  s/$1/=$diskgroupname/           if ( /^oracle.install.asm.diskGroup.name(=.*$)/ ) ;
+  s/$1/=$diskgroupausize/         if ( /^oracle.install.asm.diskGroup.AUSize(=.*$)/ ) ;
+  s/$1/=$gimrname/                if ( /^oracle.install.asm.gimrDG.name(=.*$)/ ) ;
+  s/$1/=$gimrausize/              if ( /^oracle.install.asm.gimrDG.AUSize(=.*$)/ ) ;
+  s/$1/=$inventory_location/      if ( /^INVENTORY_LOCATION(=.*$)/ ) ;
+  s/$1/=$oracle_base/             if ( /^ORACLE_BASE(=.*$)/ );
+  s/$1/=$osasm/                   if ( /^oracle.install.asm.OSASM(=.*$)/ );
+  s/$1/=$osdba/                   if ( /^oracle.install.asm.OSDBA(=.*$)/ );
+  s/$1/=$sysasmpassword/          if ( /^oracle.install.asm.SYSASMPassword(=.*$)/ );
+  s/$1/=$diskgroup_disks/         if ( /^oracle.install.asm.diskGroup.disks(=.*$)/ );
+  s/$1/=$diskgroup_failuregroups/ if ( /^oracle.install.asm.diskGroup.oracle.install.asm.diskGroup.FailureGroups(=.*$)/ );
+  s/$1/=$diskgroup_fg_disks/      if ( /^oracle.install.asm.diskGroup.disksWithFailureGroupNames(=.*$)/ );
+  s/$1/=$clustername/             if ( /^oracle.install.crs.config.clusterName(=.*$)/ );
+  s/$1/=$clusternodes/            if ( /^oracle.install.crs.config.clusterNodes(=.*$)/ );
+  s/$1/=$monitorpassword/         if ( /^oracle.install.asm.monitorPassword(=.*$)/ );
+  s/$1/=$emadminpassword/         if ( /^oracle.install.config.emAdminPassword(=.*$)/ );
+  s/$1/=$scanname/                if ( /^oracle.install.crs.config.gpnp.scanName(=.*$)/ );
+  s/$1/=$scanport/                if ( /^oracle.install.crs.config.gpnp.scanPort(=.*$)/ );
+  s/$1/=$net_intf_list/           if ( /^oracle.install.crs.config.networkInterfaceList(=.*$)/ );
+  s/$1/=$configuregimr/           if ( /^oracle.install.crs.configureGIMR(=.*$)/ );
+  s/$1/=$configuregimrdatadg/     if ( /^oracle.install.asm.configureGIMRDataDG(=.*$)/ );
+  s/$1/=$diskgroup_redundancy/    if ( /^oracle.install.asm.diskGroup.redundancy(=.*$)/ );
+  s/$1/=$gimr_redundancy/         if ( /^oracle.install.asm.gimrDG.redundancy(=.*$)/ );
+  s/$1/=$gimr_disks/              if ( /^oracle.install.asm.gimrDG.disks(=.*$)/ );
+  s/$1/=$gimrdg_failuregroups/    if ( /^oracle.install.asm.gimrDG.FailureGroups(=.*$)/ );
+  s/$1/=$gimr_fg_disks/           if ( /^oracle.install.asm.gimrDG.disksWithFailureGroupNames(=.*$)/ );
+  push(@new_grid_rsp_lines, $_);
+}
+close IN;
+
+sub params_changed {
+  return 1 if (scalar @old_grid_rsp_lines == 0);
+  for $i (0 .. $#new_grid_rsp_lines) {
+    return 1 if ("$new_grid_rsp_lines[$i]" ne "$old_grid_rsp_lines[$i]");
+  }
+  return 0;
+}
+
+if (params_changed() == 1) {
+  open(OUT, "> $grid_rsp") or die "Failed to open $grid_rsp: $!\n";
+  for $line (@new_grid_rsp_lines) {
+    print OUT "$line\n";
+  }
+  close OUT;
+  print "$grid_rsp changed. (created)\n";
+}
+
+exit 0;

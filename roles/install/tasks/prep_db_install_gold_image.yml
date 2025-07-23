@@ -1,0 +1,78 @@
+- name: Check if db is already unzipped
+  ansible.builtin.stat:
+    path: "{{done_dir}}/db_unzipped"
+  register: db_unzipped_stat
+  when:
+    - inventory_hostname == first_host
+
+- name: Copying oracle Single instance source files from remote to stage
+  ansible.builtin.copy:
+    src: "{{ install.ora_zips.remote_local_mount }}/{{ install.ora_zips.base_subdir }}/{{ install.ora_zips.db19c_zip }}"
+    dest: "{{ config.fs.ofa_fs }}/stage"
+    owner: "{{global.db_owner}}"
+    group: "{{global.db_pgroup}}"
+  when:
+    - inventory_hostname == first_host
+    - not db_unzipped_stat.stat.exists
+    - install.ora_zips.ora_binary_location == 'remote'
+
+- name: Touch db_remote_copy file
+  ansible.builtin.command: touch "{{done_dir}}"/db_remote_copy
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not db_unzipped_stat.stat.exists
+
+- name: Check if db is already copied from remote
+  ansible.builtin.stat:
+    path: "{{done_dir}}/db_remote_copy"
+  register: db_remote_copy_stat
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'remote'
+    - not db_unzipped_stat.stat.exists
+
+
+
+- name: Extracting oracle Single instance source files from stage
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ config.fs.ofa_fs }}/stage/{{ install.ora_zips.db19c_zip }} -d {{ config.db_home | flatten | list | join ('/') }}"
+  become_user: "{{global.db_owner}}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - not db_unzipped_stat.stat.exists
+    - install.ora_zips.ora_binary_location == 'remote'
+    - db_remote_copy_stat.stat.exists
+
+- name: Extracting oracle Single instance source files from local
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ install.ora_zips.remote_local_mount }}/{{ install.ora_zips.base_subdir }}/{{ install.ora_zips.db19c_zip }} -d {{ config.db_home | flatten | list | join ('/') }}"
+  become_user: "{{global.db_owner}}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - not db_unzipped_stat.stat.exists
+    - install.ora_zips.ora_binary_location == 'local'
+
+- name: Extracting oracle Single Instance source files from nfs
+  ansible.builtin.shell:
+    cmd: "unzip -o {{ install.ora_zips.nfs_mount.0 }}/{{ install.ora_zips.base_subdir }}/{{ install.ora_zips.db19c_zip }} -d {{ config.db_home | flatten | list | join ('/') }}"
+  become_user: "{{ global.db_owner }}"
+  become_method: su
+  become: yes
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ora_binary_location == 'nfs'
+    - not db_unzipped_stat.stat.exists
+
+
+- name: Touch db_unzipped file
+  ansible.builtin.command: touch "{{done_dir}}"/db_unzipped
+  when:
+    - inventory_hostname == first_host
+    - install.ora_zips.ru_version | default(false) and (ru_version_without_decimal | int != 193) and not db_unzipped_stat.stat.exists
+
+

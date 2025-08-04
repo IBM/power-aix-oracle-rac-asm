@@ -1,9 +1,12 @@
 <!-- This should be the location of the title of the repository, normally the short name -->
 # AIX Oracle RAC Collection - power_aix_oracle_rac_asm
 
-This Ansible Collection playbook automates the installation and configuration of Oracle RAC 19c on IBM AIX LPARs running on Power Systems. The collection automates implementation of Oracle RAC specific requirements from setting up kernel tunables, network attributes, shared disk attributes, passwordless ssh user equivalency etc and, automates the Oracle 19c Grid and RDBMS Installations using silent method. It significantly reduces manual effort and installation time—from multiple days to just a few hours—even for multi-node clusters.
+This Ansible Collection automates the installation and configuration of Oracle RAC 19c on IBM AIX LPARs running on Power Systems. The collection automates implementation of Oracle RAC specific requirements from setting up kernel tunables, network attributes, shared disk attributes, passwordless ssh user equivalency etc and, automates the Oracle 19c Grid and RDBMS Installations using silent method. It significantly reduces manual effort and installation time—from multiple days to just a few hours—even for multi-node clusters.
 
 The playbook is tested on clusters ranging from 1 to 8 nodes and supports Oracle RAC installation using standard zip binaries + RU apply or Gold Images, with flexible software staging options such as NFS, remote (Ansible controller), or local (managed host).
+
+Note: To Create Gold Images, please refer to the section "Gold Image Creation" in the below Documentation
+https://github.com/IBM/ansible-power-aix-oracle/blob/main/docs/README_ORA_SI_Play.pdf
 
 It is compatible with both manual infrastructure provisioning (via HMC) and automated provisioning using PowerVC, and integrates smoothly with Ansible Automation Platform 2 (AAP2) via both CLI (ansible-navigator) and GUI (AWX/Tower).
 

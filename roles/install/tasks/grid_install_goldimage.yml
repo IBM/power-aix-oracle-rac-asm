@@ -1,0 +1,85 @@
+- name: Template out gen_grid_goldimage_rsp.pl.j2
+  template:
+    src: templates/gen_grid_goldimage_rsp.pl.j2
+    dest: "{{ scripts_dir }}/gen_grid_goldimage_rsp.pl"
+    mode: '700'
+  when:
+    - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
+
+- name: Run gen_grid_goldimage_rsp.pl
+  command:
+    cmd: "./gen_grid_goldimage_rsp.pl"
+    chdir: "{{ scripts_dir }}"
+  when:
+    - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
+  register: gen_grid_rsp_out_1918
+  changed_when: gen_grid_rsp_out_1918.stdout is search('changed')
+
+
+- name: Template out grid_install_gold_image.sh.j2
+  template:
+    src:  templates/grid_install_gold_image.sh.j2
+    dest: "{{ scripts_dir }}/grid_install_gold_image.sh"
+    mode: '755'
+  when:
+    - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
+
+- name: Run grid_install_gold_image.sh
+  command:
+    cmd:   ./grid_install_gold_image.sh
+    chdir: "{{ scripts_dir }}"
+  when:
+    - inventory_hostname == first_host
+    - not lookup('pipe', ssh_root_conn + ' ls ' + done_dir + '/grid_install_done', errors='ignore')
+  become: yes
+  become_user: "{{ global.grid_owner }}"
+  become_method: su
+  register: grid_install_out
+  changed_when: grid_install_out.stdout is search('changed')
+
+
+- name: Running orainstRoot.sh
+  shell:
+    cmd: "{{install.grid_rsp.INVENTORY_LOCATION | flatten | list | join('/')}}/orainstRoot.sh"
+  become: yes
+  throttle: 1
+  when:
+
+
+- name: Template out grid_root_script.sh.j2
+  template:
+    src:  templates/grid_root_script.sh.j2
+    dest: "{{ scripts_dir }}/grid_root_script.sh"
+    mode: '755'
+
+
+- name: Execute root.sh on first node
+  command:
+    cmd:   ./grid_root_script.sh
+    chdir: "{{ scripts_dir }}"
+  when:
+    - inventory_hostname == first_host
+
+
+- name: Execute root.sh on other nodes
+  command:
+    cmd:   ./grid_root_script.sh
+    chdir: "{{ scripts_dir }}"
+  when:
+    - inventory_hostname != first_host
+
+
+- name: Running ConfigTools
+  shell: "{{config.grid_home | flatten | list | join ('/')}}/gridSetup.sh -silent -executeConfigTools -responseFile {{ files_dir }}/grid_rsp_goldimage.rsp >> {{ done_dir }}/runconfigtools.out 2>&1"
+  become: yes
+  become_method: su
+  become_user: "{{global.grid_owner}}"
+  environment:
+    SKIP_ROOTPRE: "TRUE"
+  register: grid_configtools
+  when:
+    - inventory_hostname == first_host
+

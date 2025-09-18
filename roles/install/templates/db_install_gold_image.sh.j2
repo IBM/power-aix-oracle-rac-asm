@@ -1,0 +1,127 @@
+#!/usr/bin/ksh93
+
+# Copyright (c) IBM Corporation 2021
+
+# This script installs "Oracle Database Software Only".
+
+# Idempotent: yes
+
+if [ ! -f ./helper.sh ]
+then
+    echo "$(basename $0): helper.sh not found in $(pwd)"; exit 1;
+fi
+. ./helper.sh
+
+  #+ make sure this script is running as this user.
+check_user_is "{{ global.db_owner }}"
+
+################################################################################
+#                                                                              #
+# Main                                                                         #
+#                                                                              #
+################################################################################
+          
+   DONE_DIR="{{ done_dir }}"                                 #+ should be like /tmp/ansible/done
+    DB_HOME="{{ config.db_home | flatten | list | join ('/') }}" #+ should be like /acfs/db
+ORACLE_BASE="{{ install.db_rsp.ORACLE_BASE | flatten | list | join('/') }}"   #+ should be like /acfs/base
+   DB_RSP="{{ files_dir }}/db_install.rsp";                  #+ should be like /tmp/ansible/file/db_install.rsp
+   PASSWORD="{{ global.root_password }}"                     #+ should be a password
+DB_BASE_ZIP="{{ install.ora_zips.db19c_zip }}"
+  INVENTORY="{{ install.db_rsp.INVENTORY_LOCATION | join('/') }}"
+
+
+fail_if_directory_doesnt_exist "$DB_HOME"
+fail_if_file_doesnt_exist      "$DB_RSP"
+fail_if_empty_var              "$PASSWORD"
+
+if [ -f "$DONE_DIR/db_install_done" ]; then
+  echo "Database already installed."
+  exit 0
+fi
+
+
+if [ ! -d "$INVENTORY/logs" ]; then
+  echo "Inventory log directory $INVENTORY/logs doesn't exist."
+  exit 1
+fi
+
+#
+# Move the old directories "InstallActions*" to "_InstallActions*"
+#
+( cd $INVENTORY/logs
+find . -type d -name 'InstallActions*' | while read d; do
+  new_d="_$(echo $d | sed -e 's/\.\///')"
+  mv $d $new_d
+done
+)
+
+install_log="{{ done_dir }}/db_install_gold_image.out"
+flag_ignorechecks={{ install.use_ignore_prechecks | lower }}
+
+cd $DB_HOME
+
+
+
+if [[ $flag_ignorechecks == true ]]
+then
+echo `date` >> $install_log
+echo "./runInstaller -silent -ignorePrereqFailure -responseFile $DB_RSP" >> $install_log
+./runInstaller -silent -ignorePrereqFailure -responseFile $DB_RSP <<EOF >> $install_log 2>&1
+y
+$PASSWORD
+EOF
+else
+echo `date` >> $install_log
+echo "./runInstaller -silent -responseFile $DB_RSP" >> $install_log
+./runInstaller -silent -responseFile $DB_RSP <<EOF >> $install_log 2>&1
+y
+$PASSWORD
+EOF
+fi
+
+#
+# Check for install status from install action log
+#
+action_log=$(find $INVENTORY/logs -type f -name 'installActions*.log' | grep -v _InstallActions | xargs ls -t | head -1)
+
+if [ -z "$action_log" ]; then
+  echo "ERROR: Failed to find install action log from $INVENTORY/logs for install completion status."
+  exit 1
+fi
+
+if [ ! -f "$action_log" ]; then
+  echo "ERROR: Install action log $action_log not found."
+  exit 1
+fi
+
+mesg1="Exit Status is 0"
+mesg2="Successfully Setup Software with warning"
+mesg3="ExitStatus SUCCESS_WITH_WARNINGS";
+
+status_code=$(cat $action_log | perl -ne "{
+                                if (/${mesg1}/) { print \"1\"; exit };
+                                if (/${mesg2}/) { print \"2\"; exit };
+                                if (/${mesg3}/) { print \"3\"; exit };}" )
+
+db_version=$(perl -ne '/CATCONST_BUILD_LABEL\s+=>\s.RDBMS_(\d+\.\d+\.\d+\.\d+)\./ && print $1 ;' < ./rdbms/admin/catconst.pm)
+
+case $status_code in
+1) echo "Database $db_version changed (Successfully Setup Software)"
+   echo "Details can be found in $action_log on $(hostname)."
+   ;;
+2) echo "Database $db_version changed (Successfully Setup Software with warnings(s)."
+   echo "Details can be found in $action_log on $(hostname)."
+   ;;
+3) echo "Database $db_version changed (Successfully Setup Software with warning(s)."
+   echo "Details can be found in $action_log on $(hostname)."
+   ;;
+*) echo "FAILED: Database Setup Software unsuccessful."
+   echo "Review $action_log on $(hostname) for details."
+   exit 1
+   ;;
+esac
+
+touch "$DONE_DIR/db_install_done"
+exit 0
+
+

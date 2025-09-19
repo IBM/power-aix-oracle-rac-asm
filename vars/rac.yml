@@ -508,7 +508,7 @@ install:
     # set the value to true if we are using goldimage.
     # if value is true, then provide the goldimage location in base_subdir, grid19c_zip, and db19c_zip variable
     # if value is false, then goldimage will not be installed
-    goldimage_flag: true
+    goldimage_flag: false
 
     # Below are the NFS,REMOTE,LOCAL binary locations
     # !!! update !!!

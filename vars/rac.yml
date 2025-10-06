@@ -103,7 +103,7 @@ preconfig:
     # !!! update !!!
     nfs_mount: [
       # Only one will be mounted based on oslevel (Ver.Rel.Tl) that matches
-      # aix_ver_rel which is set up in init.yml.
+      # aix_ver_rel which is set up in init.yml. For example aix_ver_rel = 7.3.1 (AIX73TL1)
       # NOTE: 
       # 1) nfs_export should be the value as shown in showmount -e <nfs_server>
       # 2) Alternatively, if nfs_export is the path that contains the fileset,
@@ -112,7 +112,7 @@ preconfig:
       # !!! update !!!
       # local_mnt   nfs_export                      nfs_server_host aix_ver_rel_tl
       # ---------   ----------                      -----------    -----------
-      ['/lppsource', '/nim/AIX73TL1/lppsource', '9.40.16.16', '7.3.1' ]
+      ['/lppsource', '/nim/AIX73TL1/lppsource', '9.40.16.16', '7.3.3' ]
     ]
 
     # !!! update !!!
@@ -246,7 +246,7 @@ config:
      # The VNC passwd files will be created for the user global.db_owner 
      # and global.db_owner.
      # Keep "tools" list as is. For additional RPM, use the "optional_tools"
-     # variable.
+     # variable. Use empty list [ ] instead of '' incase of no rpms need to be applied
      tools: [
         'unzip', 'expect', 'bash'
      ]

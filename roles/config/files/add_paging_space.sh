@@ -46,7 +46,7 @@ if (( $paging_space_size < $final_size )) ; then
   page_lv=$RESOUT
 
   # Find the physical partition size for allocating paging space(MB's)
-  runcmd_nz "/usr/sbin/lsvg rootvg |grep 'PP SIZE' |awk '{print(\$6);}"
+  runcmd_nz "/usr/sbin/lsvg rootvg |grep 'PP SIZE' |awk '{print(\$6)}"
   ppsize=$RESOUT
   
   _num_pps=$(echo "($final_size - $paging_space_size) / $ppsize" | bc -l)

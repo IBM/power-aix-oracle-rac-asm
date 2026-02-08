@@ -110,6 +110,13 @@
     - bash_login_shell == true
     - not lookup('pipe', ssh_root_conn + ' lslpp -Lc|grep bash ', errors='ignore')
 
+- name: Copy login.cfg to backup
+  copy:
+    src:  /etc/security/login.cfg
+    dest: "{{ backup_dir }}/login.cfg"
+    remote_src: yes
+    backup: yes
+
 - name: Copy add_bash_logincfg.sh
   copy:
     src:   ./roles/config/files/add_bash_logincfg.sh
@@ -126,6 +133,13 @@
   when:
     - bash_login_shell == True
   changed_when: add_bash_logincfg_out.stdout is search('changed')
+
+- name: Copy /etc/passwd to backup
+  copy:
+    src:  /etc/passwd
+    dest: "{{ backup_dir }}/passwd"
+    remote_src: yes
+    backup: yes
 
 - name: Create users
   user:
@@ -165,6 +179,13 @@
     - item.key != 'root'
     - not lookup('pipe', ssh_root_conn + ' pwdadm -q ' +  item.key + ' | grep NOCHECK' , errors='ignore')
 
+- name: Copy limits to backup
+  copy:
+    src:  /etc/security/limits
+    dest: "{{ backup_dir }}/limits"
+    remote_src: yes
+    backup: yes
+
 - name: Copy user_limits.pl
   copy:
     src:  ./files/user_limits.pl
@@ -190,6 +211,13 @@
   fail:
     msg: "Failed to set fact ora_pub_ips"
   when: not ora_pub_ips.0 is defined
+
+- name: Copy hosts to backup
+  copy:
+    src:  /etc/hosts
+    dest: "{{ backup_dir }}/hosts"
+    remote_src: yes
+    backup: yes
 
 - name: Copy update_etc_hosts.pl
   copy:
@@ -262,6 +290,18 @@
   command:
     cmd: cfgmgr
 
+- name: Capture ifconfig -a before network changes
+  shell: ifconfig -a
+  register: ifconfig_before
+  when: not config.networks_defined
+
+- name: Save ifconfig output to file
+  copy:
+    content: "{{ ifconfig_before.stdout }}"
+    dest: "{{ backup_dir }}/ifconfig_before_network_change.txt"
+  when: not config.networks_defined
+
+
 - name: Copy mktcpip.sh
   copy:
     src:  ./files/mktcpip.sh
@@ -278,8 +318,16 @@
     chdir: "{{ scripts_dir }}"
   register: mktcpip_out
   loop: "{{ config.networks }}"
-  when: item.host == inventory_hostname 
+  when:
+    - item.host == inventory_hostname
+    - not config.networks_defined
   changed_when: mktcpip_out.stdout is search('changed')
+
+- name: Skip network configuration
+  debug:
+    msg: "Network configuration skipped as networks_defined is true"
+  when: config.networks_defined
+
 
 - name: Copy net_connectivity.pl
   copy:
@@ -335,6 +383,14 @@
   changed_when: uplink_poll_out.stdout is search('uplink poll changed')
   when: item.host == inventory_hostname 
 
+- name: Capture ifconfig -a network
+  shell: ifconfig -a
+  register: ifconfig_all
+
+- name: Save ifconfig output to file
+  copy:
+    content: "{{ ifconfig_all.stdout }}"
+    dest: "{{ backup_dir }}/ifconfig_all.txt"
 
 
 - name: Copy add_dshenv.sh
@@ -631,6 +687,13 @@
   shell: "/usr/sbin/tcpdump -D && ls /dev/bpf*"
   when: not lookup('pipe', ssh_root_conn + ' ls /dev/bpf*',  errors='ignore')
 
+- name: Copy pam.conf to backup
+  copy:
+    src:  /etc/pam.conf
+    dest: "{{ backup_dir }}/pam.conf"
+    remote_src: yes
+    backup: yes
+
 - name: Copy pamconf.sh
   copy:
     src:  ./files/pamconf.sh
@@ -643,6 +706,13 @@
     chdir: "{{ scripts_dir }}"
   register: pamconf_out
   changed_when: pamconf_out.stdout is search('changed')
+
+- name: Copy syslog.conf to backup
+  copy:
+    src:  /etc/syslog.conf
+    dest: "{{ backup_dir }}/syslog.conf"
+    remote_src: yes
+    backup: yes
 
 - name: Copy syslog.sh
   copy:

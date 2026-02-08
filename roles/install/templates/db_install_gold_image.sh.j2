@@ -59,7 +59,7 @@ install_log="{{ done_dir }}/db_install_gold_image.out"
 flag_ignorechecks={{ install.use_ignore_prechecks | lower }}
 
 cd $DB_HOME
-
+export SRVM_DISABLE_MTTRANS=true
 
 
 if [[ $flag_ignorechecks == true ]]

@@ -71,9 +71,13 @@ done
 install_log="{{ done_dir }}/db_install_1918_plus.out"
 install_log_base="{{ done_dir }}/db_install_base.out"
 flag_ignorechecks={{ install.use_ignore_prechecks | lower }}
+insall_base_done="{{ done_dir }}/db_base_install_done"
+export SRVM_DISABLE_MTTRANS=true
 
 cd $DB_HOME
 
+if [ ! -f $insall_base_done ]
+then
 echo `date` >> $install_log_base
 echo "./runInstaller -silent -ignorePrereqFailure -responseFile $DB_RSP_BASE" >> $install_log_base
 ./runInstaller -silent -ignorePrereqFailure -responseFile $DB_RSP_BASE <<EOF >> $install_log_base 2>&1
@@ -84,6 +88,16 @@ EOF
 
 echo `date` "OPatch/opatchauto apply $RU_DIR/$RU_NAME -binary -oh $DB_HOME" >> $install_log_base
 $DB_HOME/OPatch/opatchauto apply $RU_DIR/$RU_NAME -binary -oh $DB_HOME >> $install_log_base
+
+if grep -q 'Successfully Setup Software' $install_log_base; then
+  touch "{{ done_dir }}/db_base_install_done"
+  db_version=$($DB_HOME/bin/oraversion -compositeVersion)
+  echo "DB install changed (Database $db_version install successfully.)"
+else
+  echo "ERROR: runInstaller failed. See $install_log_base log on $(hostname) for details."
+  exit 1
+fi
+fi
 
 
 

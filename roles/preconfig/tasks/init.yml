@@ -54,6 +54,10 @@
   set_fact:
     files_dir: "{{ global.files_dir | join('/') }}"
 
+- name: Set fact backup dir
+  set_fact:
+    backup_dir: "{{ global.backup_dir | join('/') }}"
+
 - name: Create work dir
   file:
     path: "{{ global.work_dir }}"
@@ -83,6 +87,12 @@
     path: "{{ files_dir }}"
     state: "directory"
     mode: '0755'
+
+- name: Create backup dir
+  file:
+    path: "{{ backup_dir }}"
+    state: "directory"
+    mode: '0777'
 
 - name: Template out helper.sh
   template:

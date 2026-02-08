@@ -18,5 +18,5 @@
   become_method: su
   register: db_install_out
   changed_when: db_install_out.stdout is search('changed') or db_install_out.stdout is search('Successfully Setup Software')
-
+  any_errors_fatal: true
 

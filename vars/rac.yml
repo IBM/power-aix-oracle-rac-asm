@@ -8,6 +8,7 @@
 # NOTE: updates can be made in this file or put the updated variables in 
 #       <role>/vars/main.yml to override the defaults here. Remember
 #       variables are defined in a namespace starting from <role>.
+#       db_asmadmingroup value will be set for oracle binary and shared asm disks
 
 ###############################################################################
 global:
@@ -19,8 +20,8 @@ global:
   grid_pgroup: &grid_pgroup "oinstall"
   db_owner:    &db_owner    "oracle"
   db_pgroup:   &db_pgroup   "oinstall"
-  db_asmadmingroup: &db_asmadmingroup  "asmadmin"
-  db_asmdbagroup: &db_asmdbagroup  "asmdba"
+  db_asmadmingroup: &db_asmadmingroup  "oinstall"
+  db_asmdbagroup: &db_asmdbagroup  "oinstall"
   # db_pgroup is the primary group for database user, it should match
   # config.grid_rsp.install.asm.OSASM
   # grid_pgroup is the primary group for grid user
@@ -331,6 +332,8 @@ config:
   cluster_domain: "example.com"
 
   # !!! update !!!
+  # To skip the network IP assignment via smitty set the variable networks_defined to true
+  networks_defined: false 
   networks:
     # The second column "hostname" is a temporary place holder used to satisfy
     # mktcpip -h <hostname>, except that ora_pub's "hostname" is used for
@@ -353,11 +356,11 @@ config:
 #      ora_pvt1: "ora2-1      en3 10.10.10.2    255.255.255.0"
 #      ora_pvt2: "ora2-2      en4 10.10.20.2    255.255.255.0"
 
-     - host: "node1.example.com"
+     - host: "node1"
        ora_pub:  "node1       en1 192.168.10.91 255.255.252.0"
        ora_pvt1: "node1-priv1   en2 10.10.10.93  255.255.255.0" 
        ora_pvt2: "node1-priv2   en3 10.10.20.93  255.255.255.0" 
-     - host: "node2.example.com"
+     - host: "node2"
        ora_pub:  "node2       en1 192.168.10.92 255.255.252.0"
        ora_pvt1: "node2-priv1   en2 10.10.10.94  255.255.255.0"
        ora_pvt2: "node2-priv2   en3 10.10.20.94  255.255.255.0"

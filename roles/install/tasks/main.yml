@@ -374,6 +374,7 @@
   become_method: su
   register: grid_install_out
   changed_when: grid_install_out.stdout is search('changed')
+  any_errors_fatal: true
 
 - name: Run grid install 1918 plus
   include_tasks: ../../install/tasks/grid_install_1918_plus.yml
@@ -623,7 +624,7 @@
   become_method: su
   register: db_install_out
   changed_when: db_install_out.stdout is search('changed') or db_install_out.stdout is search('Successfully Setup Software')
-
+  any_errors_fatal: true
 
 - name: Run DB install 1918 plus
   include_tasks: ../../install/tasks/db_install_1918_plus.yml

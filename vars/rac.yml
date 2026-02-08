@@ -20,8 +20,8 @@ global:
   grid_pgroup: &grid_pgroup "oinstall"
   db_owner:    &db_owner    "oracle"
   db_pgroup:   &db_pgroup   "oinstall"
-  db_asmadmingroup: &db_asmadmingroup  "oinstall"
-  db_asmdbagroup: &db_asmdbagroup  "oinstall"
+  db_asmadmingroup: &db_asmadmingroup  "asmadmin"
+  db_asmdbagroup: &db_asmdbagroup  "asmdba"
   # db_pgroup is the primary group for database user, it should match
   # config.grid_rsp.install.asm.OSASM
   # grid_pgroup is the primary group for grid user

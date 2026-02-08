@@ -39,7 +39,7 @@
   become_method: su
   register: grid_install_out
   changed_when: grid_install_out.stdout is search('changed')
-
+  any_errors_fatal: true
 
 - name: Running orainstRoot.sh
   shell:

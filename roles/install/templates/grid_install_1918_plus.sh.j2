@@ -40,7 +40,11 @@ echo "./gridSetup.sh -silent -responsefile {{ files_dir }}/grid_rsp_base.rsp"
 install_log="{{ done_dir }}/grid_install_1918_plus.out"
 install_base_log="{{ done_dir }}/grid_install_base.out"
 aixefixfile="/tmp/efix_IJ38518.txt"
+insall_base_done="{{ done_dir }}/grid_base_install_done"
+export SRVM_DISABLE_MTTRANS=true
 
+if [ ! -f $insall_base_done ]
+then
 echo `date` "./gridSetup.sh -silent -ignorePrereqFailure -responsefile {{ files_dir }}/grid_rsp_base.rsp" >> $install_base_log
 $grid_home/gridSetup.sh -silent -ignorePrereqFailure -responsefile "{{ files_dir }}/grid_rsp_base.rsp" <<EOF >> $install_base_log 2>&1
 y
@@ -49,6 +53,17 @@ EOF
 
 echo `date` "OPatch/opatchauto apply $ru_dir/$ru_name -binary -oh $grid_home -target_type cluster" >> $install_base_log
 $grid_home/OPatch/opatchauto apply $ru_dir/$ru_name -binary -oh $grid_home -target_type cluster >> $install_base_log
+
+
+if grep -q 'Successfully Setup Software' $install_base_log; then
+  touch "{{ done_dir }}/grid_base_install_done"
+  grid_version=$($grid_home/bin/oraversion -compositeVersion)
+  echo "Grid install changed (Grid $grid_version install successfully.)"
+else
+  echo "ERROR: gridSetup.sh failed. See $install_base_log and gridSetupActions log on $(hostname) for details."
+  exit 1
+fi
+fi
 
 flag_ignorechecks={{ install.use_ignore_prechecks | lower }}
 if [[ $flag_ignorechecks == true ||  -f $aixefixfile ]]

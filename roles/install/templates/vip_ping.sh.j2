@@ -5,6 +5,10 @@ clusterNodes="{{ install.grid_rsp.install.config.clusterNodes }}"
 scanname="{{ install.grid_rsp.install.crs.config.gpnp.scanName }}";
 done_dir="{{ done_dir }}"
 
+rm -f "${done_dir}/ping_output.txt"
+rm -f "${done_dir}/nslookup_output.txt"
+
+
 # Extract values separated by comma
 nodes=$(echo "$clusterNodes" | tr ',' '\n')
 
@@ -14,7 +18,7 @@ echo "$scanname"
 
 # Perform nslookup for the SCAN
 echo "Performing nslookup for $scanname"
-nslookup "$scanname" > "${done_dir}/nslookup_tmp.txt"
+nslookup "$scanname" >> "${done_dir}/nslookup_tmp.txt"
 cat "${done_dir}/nslookup_tmp.txt" >> "${done_dir}/nslookup_output.txt"
 echo ""
 
@@ -33,7 +37,7 @@ if grep -q "Name:" "${done_dir}/nslookup_tmp.txt"; then
     # Ping each resolved IP address
     for ip in "${resolved_ips[@]}"; do
         echo "Pinging $ip"
-        ping -c 4 "$ip" > "${done_dir}/ping_tmp_${ip}.txt"
+        ping -c 4 "$ip" >> "${done_dir}/ping_tmp_${ip}.txt"
         cat "${done_dir}/ping_tmp_${ip}.txt" >> "${done_dir}/ping_output.txt"
         echo ""
     done
@@ -72,7 +76,7 @@ for node in $nodes; do
 
     # Perform nslookup for the target host
     echo "Performing nslookup for $target_vip"
-    nslookup "$target_vip" > "${done_dir}/nslookup_tmp.txt"
+    nslookup "$target_vip" >> "${done_dir}/nslookup_tmp.txt"
     cat "${done_dir}/nslookup_tmp.txt" >> "${done_dir}/nslookup_output.txt"
     echo ""
 
@@ -87,7 +91,7 @@ for node in $nodes; do
 
         # Ping the resolved IP address
         echo "Pinging $resolved_ip"
-        ping -c 4 "$target_vip" > "${done_dir}/ping_tmp.txt"
+        ping -c 4 "$target_vip" >> "${done_dir}/ping_tmp.txt"
         cat "${done_dir}/ping_tmp.txt" >> "${done_dir}/ping_output.txt"
         echo ""
 

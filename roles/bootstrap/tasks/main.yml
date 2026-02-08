@@ -59,6 +59,17 @@
   vars:
     ansible_python_interpreter: /usr/bin/python
 
+- name: Validate SSH from controller to all nodes
+  command: >
+    ./roles/bootstrap/files/sshcheckbootstrap.sh {{ inventory_hostname }}
+  delegate_to: localhost
+  register: ssh_check_result
+
+- name: Fail if SSH check failed
+  fail:
+    msg: "SSH check failed for {{ inventory_hostname }}"
+  when: "'Failed' in ssh_check_result.stdout"
+
 - name: Add nameserver entries to /etc/resolv.conf
   raw: |
     nameservers="{{ bootstrap.resolv_conf.nameservers | join(' ') }}"

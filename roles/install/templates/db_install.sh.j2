@@ -67,7 +67,7 @@ install_log="{{ done_dir }}/db_install.out"
 flag_ignorechecks={{ install.use_ignore_prechecks | lower }}
 
 cd $DB_HOME
-
+export SRVM_DISABLE_MTTRANS=true
 if [[ $flag_ignorechecks == true ]]
 then
 echo `date` >> $install_log

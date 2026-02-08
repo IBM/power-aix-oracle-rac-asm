@@ -42,6 +42,7 @@ echo "./gridSetup.sh -silent -applyRU $ru_dir/$ru_name -responsefile {{ files_di
 install_log="{{ done_dir }}/grid_install.out"
 
 aixefixfile="/tmp/efix_IJ38518.txt"
+export SRVM_DISABLE_MTTRANS=true
 flag_ignorechecks={{ install.use_ignore_prechecks | lower }}
 if [[ $flag_ignorechecks == true ||  -f $aixefixfile ]]
 then

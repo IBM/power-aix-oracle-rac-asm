@@ -188,7 +188,7 @@ config:
     #dummyvg,    '64',      'big',     ['hdisk10', 'hdisk11'], 'clear_pvids', 'zero_disks'
 #    *oravg,     '256',      "big",     ['hdisk1', 'hdisk2'], 'clear_pvids', 'zero_disks'
 #    *oravg,     '256',      "big",     ['hdisk1', 'hdisk2'], '', 'zero_disks'
-    *oravg,     '256',      "big",     ['hdisk2'], 'clear_pvids',  'zero_disks'
+    *oravg,     '32',      'scalable',     ['hdisk2'], 'clear_pvids',  'zero_disks'
   ]
 
   fs:

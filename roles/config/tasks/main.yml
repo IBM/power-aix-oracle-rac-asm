@@ -598,11 +598,23 @@
     - config.ora_vg is defined and config.ora_vg.0 is defined
     - not lookup('pipe', ssh_root_conn + ' lsvg | grep ^' + config.ora_vg.0, errors='ignore')
 
+- name: Create a logical volume with maximum placement policy
+  ibm.power_aix.lvol:
+    vg: "{{ config.ora_vg.0 }}"
+    lv: "{{ orabinlv_name }}"
+    size: "{{ config.ora_fs.1 }}"
+    policy: maximum
+    state: present
+  when:
+    - config.ora_vg is defined and config.ora_vg.0 is defined
+    - not lookup('pipe', ssh_root_conn + ' lslv -l ' + orabinlv_name, errors='ignore')
+ 
 - name: Create Oracle FS
   ibm.power_aix.filesystem:
     filesystem: "{{ config.ora_fs.0 }}"
     attributes: "size={{ config.ora_fs.1 }}"
-    vg:         "{{ config.ora_fs.2 }}"
+#    vg:         "{{ config.ora_fs.2 }}"
+    device: "{{ orabinlv_name }}"
     state:      present
     auto_mount: True
   when:

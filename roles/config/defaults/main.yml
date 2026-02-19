@@ -1,6 +1,5 @@
 ---
 # defaults file for config
-
-
+orabinlv_name: "orabinlv"
 #db_asmadmingroup: &db_asmadmingroup  "asmadmin"
 #db_asmdbagroup: &db_asmdbagroup  "asmdba"

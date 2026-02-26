@@ -545,7 +545,7 @@
     cmd: "./rename_setup_dsks.sh 
          {{ '\"' + item.0 + '\"' + ' ' +
             '\"' + config.asmdisks.mode + '\"' + ' ' +
-            '\"' + global.grid_owner + ':' + db_asmadmingroup + '\"' + ' ' +
+            '\"' + global.grid_owner + ':' + global.db_asmadmingroup + '\"' + ' ' +
             '\"' + item.1 + '\"' + ' ' +
             '\"' + item.3 + '\"' + ' ' +
             '\"' + item.4 | default([]) | list | join + '\"'

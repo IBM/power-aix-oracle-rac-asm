@@ -72,7 +72,7 @@
     chdir: "{{ scripts_dir }}"
   when:
     - inventory_hostname == first_host
-
+  any_errors_fatal: true
 
 - name: Execute root.sh on other nodes
   command:
@@ -80,7 +80,7 @@
     chdir: "{{ scripts_dir }}"
   when:
     - inventory_hostname != first_host
-
+  any_errors_fatal: true
 
 - name: Running ConfigTools
   shell: "{{config.grid_home | flatten | list | join ('/')}}/gridSetup.sh -silent -executeConfigTools -responseFile {{ files_dir }}/grid_rsp_1918_plus.rsp >> {{ done_dir }}/runconfigtools.out 2>&1"
@@ -92,4 +92,4 @@
   register: grid_configtools
   when:
     - inventory_hostname == first_host
-
+  any_errors_fatal: true

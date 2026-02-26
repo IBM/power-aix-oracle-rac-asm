@@ -31,7 +31,7 @@ global:
   saved_dir:   [ *work_dir, "saved" ]
   done_dir:    [ *work_dir, "done" ]
   files_dir:   [ *work_dir, "files" ]
-  backup_dir:   [ *work_dir, "backup" ]
+  backup_dir:  [ *work_dir, "backup" ]
 ###############################################################################
 bootstrap:
 ###############################################################################

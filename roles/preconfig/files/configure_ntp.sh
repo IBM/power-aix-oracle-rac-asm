@@ -175,6 +175,13 @@ check_servers_accessiblity() {
     echo "ERROR: ntpdate failed."
     exit 1
   fi
+  # Synchronize time with the server using ntpdate -u
+  echo "Synchronizing time with server: $good_server"
+  if ntpdate -u $good_server; then
+    echo "Time synchronized successfully with $good_server"
+  else
+    echo "WARNING: Time synchronization with $good_server failed, but continuing..."
+  fi
 } # check_servers_accessiblity
 
 
@@ -210,12 +217,13 @@ for f in $ntp_conf $rc_tcpip; do
   save_original $f
 done
 
+config_changed=0
 update_broadcastclient
 update_servers
 
 # Add "-x" to prevent time from stepping backward in cluster database enviroment
 
-config_changed=0
+#config_changed=0
 if ! grep -q 'start /usr/sbin/xntpd "$src_running" "-x"' $rc_tcpip; then
   update_cmd="/start \/usr\/sbin\/xntpd \"\$src_running\"\nd\ni\nstart /usr/sbin/xntpd \"\$src_running\" \"-x\"\n.\nw\nq\n"
   echo "$update_cmd" | ed -s $rc_tcpip
